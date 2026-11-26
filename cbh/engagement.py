@@ -93,7 +93,7 @@ def run_approved_engagement(config_path, *, max_hunts=10, parallel=2,
 
     if str(REPO_ROOT / "engine") not in sys.path:
         sys.path.insert(0, str(REPO_ROOT / "engine"))
-    from engine import Engine, ALL_PHASES
+    from engine.engine import Engine, ALL_PHASES
 
     runner = Engine(
         str(generated_scope), str(state_root), model, max(1, min(int(max_hunts), 100)),
