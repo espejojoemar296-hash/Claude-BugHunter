@@ -33,6 +33,10 @@ private data class Opportunity(
 )
 private data class LedgerLine(val label: String, val value: String)
 private data class WorkspaceFile(val path: String, val size: Int)
+private data class AuditFinding(
+    val file: String, val line: Int, val category: String, val risk: Int,
+    val priority: String, val confidence: String, val function: String, val trace: String
+)
 private data class ApprovedTarget(val file: String, val target: String, val scopeFile: String, val scopePreview: String)
 
 
@@ -147,6 +151,7 @@ private fun BugHunterScreen() {
     var activeSection by remember { mutableStateOf("Dashboard") }
     var auditSummary by remember { mutableStateOf("No source audit report found.") }
     var verificationSummary by remember { mutableStateOf("No verification workspaces found.") }
+    var auditCandidates by remember { mutableStateOf(listOf<AuditFinding>()) }
     val sections = listOf("Dashboard", "Programs", "Workspace", "Findings", "Verification", "Finance")
     val scope = rememberCoroutineScope()
 
@@ -265,6 +270,19 @@ private fun BugHunterScreen() {
                 } else {
                     "No readable source-scan-v4.0-report.json found beside the repository."
                 }
+                val candidateArray = workspace.optJSONArray("audit_candidates")
+                val candidateList = mutableListOf<AuditFinding>()
+                if (candidateArray != null) {
+                    for (i in 0 until candidateArray.length()) {
+                        val item = candidateArray.optJSONObject(i) ?: continue
+                        candidateList.add(AuditFinding(
+                            item.optString("file"), item.optInt("line"), item.optString("category"),
+                            item.optInt("risk_score"), item.optString("priority"), item.optString("confidence"),
+                            item.optString("function"), item.optString("trace")
+                        ))
+                    }
+                }
+                auditCandidates = candidateList
                 val counts = workspace.optJSONObject("verification_status_counts")
                 verificationSummary = if (counts != null) {
                     var total = 0
@@ -438,6 +456,17 @@ private fun BugHunterScreen() {
                         }
                     }
                 }
+                item {
+                    Card {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("WORKSPACE OVERVIEW", style = MaterialTheme.typography.titleMedium)
+                            Text("Saved programs: " + opportunities.size)
+                            Text("Audit candidates: " + auditCandidates.size + " loaded")
+                            Text("Evidence files: " + evidence.size + " · Report drafts: " + reports.size)
+                            Text(if (connected) "Engine connected" else "Engine disconnected")
+                        }
+                    }
+                }
                 }
                 if (activeSection == "Programs") {
                 item {
@@ -515,8 +544,29 @@ private fun BugHunterScreen() {
 
                 }
                 if (activeSection == "Findings") {
-                item { Text("FINDINGS", style = MaterialTheme.typography.titleMedium) }
-                if (findings.isEmpty()) item { Text("No findings files in findings/.") }
+                item {
+                    Text("STATIC AUDIT CANDIDATES", style = MaterialTheme.typography.titleMedium)
+                    Text("Showing up to 100 candidates from the existing source audit. These are unconfirmed leads.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (auditCandidates.isEmpty()) {
+                    item { Text("No audit candidates loaded. Connect to Termux and refresh.") }
+                } else {
+                    items(auditCandidates) { finding ->
+                        Card {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text(finding.category.ifBlank { "Unclassified candidate" }, style = MaterialTheme.typography.titleSmall)
+                                Text(finding.file + ":" + finding.line)
+                                Text("Risk score: " + finding.risk + " · " + finding.priority + " · Confidence: " + finding.confidence,
+                                    style = MaterialTheme.typography.bodySmall)
+                                if (finding.function.isNotBlank()) Text("Function: " + finding.function, style = MaterialTheme.typography.bodySmall)
+                                if (finding.trace.isNotBlank()) Text(finding.trace, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+                item { Text("WORKSPACE FILES", style = MaterialTheme.typography.titleMedium) }
+                if (findings.isEmpty()) item { Text("No additional files in findings/.") }
                 else items(findings) { Text(it.path + " · " + it.size + " bytes") }
 
                 item { Text("EVIDENCE", style = MaterialTheme.typography.titleMedium) }
@@ -534,18 +584,6 @@ private fun BugHunterScreen() {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("SCOPE", style = MaterialTheme.typography.titleMedium)
                             Text(scopePreview, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-                }
-                if (activeSection == "Dashboard") {
-                item {
-                    Card {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("ENGAGEMENT STATUS", style = MaterialTheme.typography.titleMedium)
-                            Text(engagementStatus, style = MaterialTheme.typography.bodySmall)
-                            Text("Runs scope-checked recon, endpoint discovery, risk ranking and a report without a paid AI subscription. Findings are leads, not confirmed vulnerabilities. No automatic report submission.",
-                                style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -569,6 +607,18 @@ private fun BugHunterScreen() {
                                 enabled = connected && !busy,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Start scope recon") }
+                        }
+                    }
+                }
+                }
+                if (activeSection == "Dashboard") {
+                item {
+                    Card {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("ENGAGEMENT STATUS", style = MaterialTheme.typography.titleMedium)
+                            Text(engagementStatus, style = MaterialTheme.typography.bodySmall)
+                            Text("Runs scope-checked recon, endpoint discovery, risk ranking and a report without a paid AI subscription. Findings are leads, not confirmed vulnerabilities. No automatic report submission.",
+                                style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
