@@ -30,7 +30,7 @@ private data class Opportunity(
 )
 private data class LedgerLine(val label: String, val value: String)
 private data class WorkspaceFile(val path: String, val size: Int)
-private data class ApprovedTarget(val file: String, val target: String, val scopeFile: String)
+private data class ApprovedTarget(val file: String, val target: String, val scopeFile: String, val scopePreview: String)
 
 private fun apiCall(path: String, token: String): String {
     val connection = URL("http://127.0.0.1:8765" + path).openConnection() as HttpURLConnection
@@ -146,7 +146,8 @@ private fun BugHunterScreen() {
                 for (i in 0 until targetArray.length()) {
                     val item = targetArray.getJSONObject(i)
                     targetList.add(ApprovedTarget(
-                        item.optString("file"), item.optString("target"), item.optString("scope_file")
+                        item.optString("file"), item.optString("target"), item.optString("scope_file"),
+                        item.optString("scope_preview")
                     ))
                 }
                 opportunities = parsed
@@ -283,6 +284,12 @@ private fun BugHunterScreen() {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(item.target, style = MaterialTheme.typography.titleSmall)
                             Text(item.scopeFile + " · " + item.file, style = MaterialTheme.typography.bodySmall)
+                            if (item.scopePreview.isNotBlank()) {
+                                Text(item.scopePreview, style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                Text("Scope preview unavailable — inspect the scope file before starting.",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            }
                             Button(
                                 onClick = { startEngagement(item.file) },
                                 enabled = connected && !busy,
