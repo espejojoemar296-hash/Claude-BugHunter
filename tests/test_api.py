@@ -69,6 +69,27 @@ class LocalApiTests(unittest.TestCase):
                 snapshot = _workspace_snapshot()
             self.assertTrue(any(item["path"] == str(report) for item in snapshot["reports"]))
 
+    def test_workspace_shows_scope_for_each_approved_target(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from cbh.api import _workspace_snapshot
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            approved = root / "targets" / "approved"
+            scopes = root / "scopes"
+            approved.mkdir(parents=True)
+            scopes.mkdir()
+            scope = scopes / "acme.md"
+            scope.write_text("# Acme scope\\n\\n## In scope\\n- app.example.com\\n", encoding="utf-8")
+            (approved / "acme.json").write_text(json.dumps({
+                "target": "app.example.com", "scope_file": "../../scopes/acme.md"
+            }), encoding="utf-8")
+            with patch("cbh.api.Path.cwd", return_value=root), patch("cbh.api.Path.home", return_value=root):
+                snapshot = _workspace_snapshot()
+            self.assertEqual(snapshot["approved_targets"][0]["scope_preview"], scope.read_text(encoding="utf-8"))
+
     def test_api_refuses_non_loopback_binding(self):
         from cbh.api import serve
         with self.assertRaises(ValueError):
