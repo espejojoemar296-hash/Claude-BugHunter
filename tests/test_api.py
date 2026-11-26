@@ -33,9 +33,12 @@ class LocalApiTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 401)
 
     def test_unknown_route_is_not_found(self):
-        status, body = self.request("/missing")
-        self.assertEqual(status, 404)
-        self.assertEqual(body["error"], "not_found")
+        req = Request(self.base + "/missing", headers={"Authorization": "Bearer test-secret"})
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(req, timeout=3)
+        self.assertEqual(caught.exception.code, 404)
+        payload = json.loads(caught.exception.read().decode("utf-8"))
+        self.assertEqual(payload["error"], "not_found")
 
     def test_api_refuses_non_loopback_binding(self):
         from cbh.api import serve
