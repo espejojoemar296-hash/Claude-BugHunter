@@ -788,6 +788,84 @@ def cmd_triage(args: argparse.Namespace) -> int:
 
 
 # ============================================================
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    finding = Path(args.finding).expanduser().resolve()
+    if not finding.is_file():
+        print(f"[error] finding not found: {finding}", file=sys.stderr)
+        return 2
+    try:
+        raw = finding.read_text(encoding="utf-8")
+        metadata = parse_finding_metadata(raw)
+        if not (metadata.get("asset") or metadata.get("endpoint")):
+            match = re.search(
+                r"(?im)^\\s*(?:\\*\\*)?(?:asset|target|endpoint)(?:\\*\\*)?\\s*:\\s*(\\S+)",
+                raw,
+            )
+            if match:
+                metadata["asset"] = match.group(1).strip("`<>")
+    except (OSError, UnicodeError) as exc:
+        print(f"[error] could not read finding: {exc}", file=sys.stderr)
+        return 2
+
+    from cbh.validation import validate_finding
+    result = validate_finding(
+        finding, metadata,
+        Path(args.evidence).expanduser().resolve(),
+        Path(args.scope_file).expanduser().resolve(),
+    )
+    section(f"validate — {finding.name}")
+    say("Offline checks only; no target requests are sent.")
+    say(f"  Scope:        {result['scope']}")
+    say(f"  Artifacts:    {result['artifacts']}")
+    say(f"  Reproduction: {result['reproduction']}")
+    for reason in result["reasons"]:
+        say(f"  - {reason}")
+    say(f"VERDICT: {result['status']}")
+    if result["status"] == "READY_FOR_REVIEW":
+        say("This is not proof of exploitability or bounty eligibility.")
+        return 0
+    return 1
+
+
+def cmd_autopilot(args: argparse.Namespace) -> int:
+    from cbh.automation import watch
+    return watch(
+        interval=args.interval, once=args.once, platforms=args.platform,
+        scan_approved=args.scan_approved, approved_dir=args.approved_dir,
+    )
+
+
+def cmd_ledger(args: argparse.Namespace) -> int:
+    from cbh import automation
+    if args.ledger_action == "add":
+        try:
+            row_id = automation.add_transaction(
+                args.kind, args.amount, args.currency, args.note, args.program,
+            )
+        except ValueError as exc:
+            print(f"[error] {exc}", file=sys.stderr)
+            return 2
+        print(f"Ledger entry #{row_id} saved.")
+        return 0
+    if args.ledger_action == "list":
+        rows = automation.list_transactions(limit=args.limit)
+        if not rows:
+            print("No ledger entries yet.")
+        for row in rows:
+            print(
+                f"#{row['id']} {row['created_at']} {row['kind'].upper()} "
+                f"{row['amount']:.2f} {row['currency']} {row['program']} {row['note']}"
+            )
+        return 0
+    rows = automation.ledger_summary()
+    if not rows:
+        print("Ledger is empty.")
+    for row in rows:
+        print(f"{row['currency']} {row['kind']}: {row['total']:.2f} ({row['entries']} entries)")
+    return 0
+
+
 # report — emit a report draft based on finding metadata
 # ============================================================
 def _mask_report_fences(body: str) -> str:
@@ -1326,6 +1404,36 @@ def main() -> int:
     p_hunt.add_argument("--refresh", action="store_true")
     p_hunt.add_argument("--limit", type=int, default=20)
     p_hunt.set_defaults(func=cmd_hunt)
+
+
+    p_validate = sub.add_parser("validate", help="offline scope and evidence checks")
+    p_validate.add_argument("finding")
+    p_validate.add_argument("--evidence", required=True)
+    p_validate.add_argument("--scope-file", default="scope.md")
+    p_validate.set_defaults(func=cmd_validate)
+
+    p_auto = sub.add_parser("autopilot", help="continuous public bounty discovery")
+    p_auto.add_argument("--platform", choices=["hackerone", "bugcrowd", "intigriti", "yeswehack"])
+    p_auto.add_argument("--interval", type=int, default=21600)
+    p_auto.add_argument("--once", action="store_true")
+    p_auto.add_argument("--scan-approved", action="store_true")
+    p_auto.add_argument("--approved-dir", default="targets/approved")
+    p_auto.set_defaults(func=cmd_autopilot)
+
+    p_ledger = sub.add_parser("ledger", help="local bounty income and expense ledger")
+    ledger_sub = p_ledger.add_subparsers(dest="ledger_action", required=True)
+    p_add = ledger_sub.add_parser("add")
+    p_add.add_argument("--kind", choices=["income", "expense"], required=True)
+    p_add.add_argument("--amount", type=float, required=True)
+    p_add.add_argument("--currency", default="USD")
+    p_add.add_argument("--note", default="")
+    p_add.add_argument("--program", default="")
+    p_add.set_defaults(func=cmd_ledger)
+    p_list = ledger_sub.add_parser("list")
+    p_list.add_argument("--limit", type=int, default=50)
+    p_list.set_defaults(func=cmd_ledger)
+    p_summary = ledger_sub.add_parser("summary")
+    p_summary.set_defaults(func=cmd_ledger)
 
     p_scope = sub.add_parser("scope", help="program scope tools (import a program's scope into scope.md)")
     scope_sub = p_scope.add_subparsers(dest="scope_command", required=True)
