@@ -159,7 +159,11 @@ private fun BugHunterScreen() {
                 val job = JSONObject(payload[4])
                 engagementStatus = when (job.optString("status")) {
                     "running" -> "Running: " + job.optString("config")
-                    "completed" -> "Completed: " + job.optString("config") + " · " + job.optString("result")
+                    "completed" -> {
+                        val completed = job.optJSONObject("result")
+                        "Completed: " + job.optString("config") + " · Report: " +
+                            (completed?.optString("report") ?: "not generated")
+                    }
                     "failed" -> "Failed: " + job.optString("error")
                     else -> "Idle"
                 }
