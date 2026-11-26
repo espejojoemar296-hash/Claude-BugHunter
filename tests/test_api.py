@@ -80,15 +80,15 @@ class LocalApiTests(unittest.TestCase):
         entry = SimpleNamespace(
             raw="app.example.test", asset_type="URL", status="rule",
             side="in", bounty=True, severity="high", instruction="",
-            reason="", rules=[r"re:^app\\.example\\.test$"],
+            reason="", rules=[r"re:^app\.example\.test$"],
         )
         program = SimpleNamespace(entries=[entry], conduct=["No denial of service"])
-        with patch("cbh.automation.list_opportunities", return_value=rows), \\
-             patch("cbh.scope_import.load_platform", return_value=([record], "cache")), \\
-             patch("cbh.scope_import._record_handle", return_value="demo"), \\
-             patch("cbh.scope_import.program_from_record", return_value=program):
-            from cbh.api import _opportunity_details
-            result = _opportunity_details(rows)
+        with patch("cbh.automation.list_opportunities", return_value=rows):
+            with patch("cbh.scope_import.load_platform", return_value=([record], "cache")):
+                with patch("cbh.scope_import._record_handle", return_value="demo"):
+                    with patch("cbh.scope_import.program_from_record", return_value=program):
+                        from cbh.api import _opportunity_details
+                        result = _opportunity_details(rows)
 
         self.assertEqual(result[0]["details"]["in_scope"][0]["asset"], "app.example.test")
         self.assertEqual(result[0]["details"]["out_of_scope"], [])
