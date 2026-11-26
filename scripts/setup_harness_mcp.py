@@ -137,8 +137,9 @@ def write_opencode(cmd, args, env, dry, name="burp"):
         return
     os.makedirs(os.path.dirname(path), exist_ok=True)
     backup(path)
-    json.dump(cfg, open(path, "w", encoding="utf-8"), indent=2)
-    open(path, "a").write("\n")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
     print(f"  ✓ OpenCode {name} MCP written.")
 
 
@@ -223,8 +224,9 @@ def write_antigravity(cmd, args, env, dry, name="burp"):
         return
     os.makedirs(os.path.dirname(path), exist_ok=True)
     backup(path)
-    json.dump(cfg, open(path, "w", encoding="utf-8"), indent=2)
-    open(path, "a").write("\n")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
     print(f"  ✓ AntiGravity {name} MCP written.")
 
 

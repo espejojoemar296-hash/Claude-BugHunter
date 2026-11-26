@@ -16,7 +16,8 @@ class Ps1AsciiTests(unittest.TestCase):
     def test_all_ps1_scripts_are_ascii(self):
         offenders = {}
         for path in glob.glob(os.path.join(_REPO, "scripts", "*.ps1")):
-            text = open(path, encoding="utf-8").read()
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
             bad = sorted({c for c in text if ord(c) > 127})
             if bad:
                 offenders[os.path.basename(path)] = [f"U+{ord(c):04X} {c!r}" for c in bad]
