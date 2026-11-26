@@ -311,6 +311,7 @@ requests. Test the complete orchestration offline, without any network requests,
 cbh engage targets/approved/acme.json --mock
 ```
 
-The output folder contains the resumable engagement state, evidence, logs, arsenal map, and
-`report.md`. A report is a draft for human review, not a platform submission or a guarantee
-that the finding qualifies for a reward.
+The output folder contains the resumable engagement state, evidence, logs, arsenal map,
+`report.md`, and platform-specific drafts under `submission-drafts/` for HackerOne, Bugcrowd,
+and Intigriti. Review every draft and evidence artifact before manually submitting it. The tool
+does not submit reports or guarantee that a finding qualifies for a reward.
