@@ -184,6 +184,19 @@ private fun BugHunterScreen() {
                         "failed" -> "Discovery failed: " + job.optString("error")
                         else -> discoveryStatus
                     }
+                    val engagement = withContext(Dispatchers.IO) {
+                        JSONObject(apiCall("/engagement/status", token))
+                    }
+                    engagementStatus = when (engagement.optString("status")) {
+                        "running" -> "Running: " + engagement.optString("config")
+                        "completed" -> {
+                            val result = engagement.optJSONObject("result")
+                            "Completed: " + engagement.optString("config") + " · Report: " +
+                                (result?.optString("report") ?: "not generated")
+                        }
+                        "failed" -> "Failed: " + engagement.optString("error")
+                        else -> "Idle"
+                    }
                 } catch (_: Exception) {
                     // Keep the last successful snapshot visible during a temporary API interruption.
                 }
