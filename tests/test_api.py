@@ -172,6 +172,7 @@ class LocalApiTests(unittest.TestCase):
 
         self.assertTrue(snapshot["audit_summary"]["available"])
         self.assertEqual(snapshot["audit_summary"]["finding_count"], 3)
+        self.assertEqual(snapshot["audit_candidates"], [])
         self.assertEqual(snapshot["verification_status_counts"], {"NOT_TESTED": 1})
 
     def test_api_refuses_non_loopback_binding(self):
