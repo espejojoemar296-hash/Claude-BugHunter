@@ -73,7 +73,7 @@ def _scan(root, aid):
         for name in files:
             if _STOP.is_set(): break
             path = Path(current) / name
-            if path.is_symlink() or path.suffix.lower() not in (_TEXT_EXTS | _DOC_EXTS): continue
+            if path.is_symlink() or (path.suffix.lower() not in (_TEXT_EXTS | _DOC_EXTS) and not path.name.lower().startswith(".env") and path.name.lower() not in ("dockerfile", "makefile")): continue
             try:
                 size = path.stat().st_size
                 if size > _MAX_FILE_BYTES or total + size > _MAX_TOTAL_BYTES:
