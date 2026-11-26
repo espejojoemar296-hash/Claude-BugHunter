@@ -287,3 +287,30 @@ For senior pentesters: a productivity multiplier that does the boring orchestrat
 For junior researchers: a guardrail that prevents the top three N/A-submission classes (no real HTTP test, no concrete impact, finding on never-submit list).
 
 **Choice not dogma:** operators with no Burp run curl-only; operators with Burp Pro route via `--burp`; operators with Burp + MCP drive everything from a Claude Code conversation. All three are first-class supported.
+
+
+## `cbh engage <approved-config.json>` — complete approved-scope workflow
+
+Create a reviewed target configuration under `targets/approved/` (format documented in
+[`targets/approved/README.md`](../targets/approved/README.md)), then run:
+
+```bash
+cbh engage targets/approved/acme.json
+```
+
+This runs the existing engagement engine through recon, ranking, surface mapping,
+AI-assisted hunting, adversarial validation, and report drafting. It checks the target and
+every seed against the imported scope before the engine starts. Active testing is read-only
+by default; the command does not submit reports.
+
+The live AI phases require the Claude Code CLI to be installed and authenticated in the same
+environment. If that executable is unavailable, the command stops before making target
+requests. Test the complete orchestration offline, without any network requests, using:
+
+```bash
+cbh engage targets/approved/acme.json --mock
+```
+
+The output folder contains the resumable engagement state, evidence, logs, arsenal map, and
+`report.md`. A report is a draft for human review, not a platform submission or a guarantee
+that the finding qualifies for a reward.
