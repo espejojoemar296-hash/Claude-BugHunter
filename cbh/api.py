@@ -116,10 +116,21 @@ def _workspace_snapshot():
             try:
                 item = json.loads(path.read_text(encoding="utf-8"))
                 if isinstance(item, dict):
+                    scope_value = str(item.get("scope_file") or "")
+                    scope_preview = ""
+                    if scope_value:
+                        scope_path = (path.parent / scope_value).resolve()
+                        if root == scope_path or root in scope_path.parents:
+                            try:
+                                if scope_path.is_file():
+                                    scope_preview = scope_path.read_text(encoding="utf-8")[:3000]
+                            except (OSError, UnicodeError):
+                                scope_preview = "[scope file could not be read]"
                     approved.append({
                         "file": path.name,
                         "target": str(item.get("target") or ""),
-                        "scope_file": str(item.get("scope_file") or ""),
+                        "scope_file": scope_value,
+                        "scope_preview": scope_preview,
                     })
             except (OSError, UnicodeError, json.JSONDecodeError):
                 approved.append({"file": path.name, "target": "", "scope_file": ""})
