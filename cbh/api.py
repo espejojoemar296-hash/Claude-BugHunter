@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlsplit
 
 from cbh import automation
+from cbh import assessment
 
 _JOB_LOCK = threading.Lock()
 _JOB = {"status": "idle"}
@@ -424,6 +425,10 @@ def make_handler(token: str):
             elif route == "/engagement/status":
                 with _JOB_LOCK:
                     self._send(200, dict(_JOB))
+            elif route == "/assessment/status":
+                self._send(200, assessment.status())
+            elif route == "/assessment/history":
+                self._send(200, {"assessments": assessment.history()})
             else:
                 self._send(404, {"error": "not_found"})
 
@@ -431,6 +436,36 @@ def make_handler(token: str):
             if not self._authorized():
                 return
             route = urlparse(self.path).path
+            if route == "/assessment/start":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length < 1 or length > 4096:
+                        raise ValueError("invalid request size")
+                    data = json.loads(self.rfile.read(length).decode("utf-8"))
+                    if not isinstance(data, dict):
+                        raise ValueError("JSON body must be an object")
+                    if data.get("mode", "local_only") != "local_only":
+                        raise ValueError("only local_only assessments are enabled; live testing is blocked")
+                    started, state = assessment.start(data.get("root"), data.get("program"))
+                    if not started:
+                        self._send(409, {"error": "an assessment is already running", "assessment": state})
+                    else:
+                        self._send(202, {"started": True, "assessment": state})
+                except (ValueError, TypeError, UnicodeError, json.JSONDecodeError, OSError) as exc:
+                    self._send(400, {"error": str(exc)[:240]})
+                return
+            if route == "/assessment/stop":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length > 1024:
+                        raise ValueError("invalid request size")
+                    if length:
+                        self.rfile.read(length)
+                    stopped, state = assessment.stop()
+                    self._send(200, {"stop_requested": stopped, "assessment": state})
+                except (ValueError, TypeError) as exc:
+                    self._send(400, {"error": str(exc)[:200]})
+                return
             if route == "/opportunities/refresh":
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
