@@ -26,7 +26,7 @@ The service binds only to 127.0.0.1:8765 and requires a bearer token. It exposes
 3. In the Android app, tap Connect / Refresh, review the displayed scope and target, then tap **Start read-only hunt** for that approved target.
 4. Refresh to view the engagement status. The report and run artifacts are stored under ~/.bughunter-engagements/ on the Termux device.
 
-The engagement pipeline runs recon, surface ranking, mapping, AI-assisted hunting, adversarial validation, and report drafting. It is read-only by default. It does not automatically submit reports or claim bounty rewards.
+The engagement pipeline runs recon, surface ranking, mapping, AI-assisted hunting, adversarial validation, a consolidated report, and HackerOne/Bugcrowd/Intigriti submission drafts. It is read-only by default. Drafts require your review and manual submission; the app does not automatically submit reports or claim bounty rewards.
 
 AI-assisted hunting requires the Claude Code CLI to be installed and authenticated in the same Termux environment. If it is missing, the engagement fails before sending target requests and the status explains the missing dependency. The offline test command does not need Claude Code and never contacts a target:
 
