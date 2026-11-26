@@ -149,6 +149,8 @@ private fun BugHunterScreen() {
     var scopePreview by remember { mutableStateOf("No scope.md found in the project folder.") }
     var telegramConfigured by remember { mutableStateOf(false) }
     var engagementStatus by remember { mutableStateOf("No engagement has been run.") }
+    var assessmentStatus by remember { mutableStateOf("No local assessment has been run.") }
+    var assessmentRunning by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var activeSection by remember { mutableStateOf("Dashboard") }
     var auditSummary by remember { mutableStateOf("No source audit report found.") }
@@ -188,6 +190,18 @@ private fun BugHunterScreen() {
                     }
                     val engagement = withContext(Dispatchers.IO) {
                         JSONObject(apiCall("/engagement/status", token))
+                    }
+                    val assessment = withContext(Dispatchers.IO) {
+                        JSONObject(apiCall("/assessment/status", token))
+                    }
+                    assessmentRunning = assessment.optString("status") in listOf("queued", "running")
+                    assessmentStatus = when (assessment.optString("status")) {
+                        "queued" -> "Assessment queued…"
+                        "running" -> "Running phase: " + assessment.optString("phase")
+                        "completed" -> "Completed. Report draft: " + assessment.optString("report")
+                        "stopped" -> "Stopped: " + assessment.optString("stop_reason")
+                        "failed" -> "Failed: " + assessment.optString("error")
+                        else -> assessmentStatus
                     }
                     engagementStatus = when (engagement.optString("status")) {
                         "running" -> "Running: " + engagement.optString("config")
@@ -466,6 +480,59 @@ private fun BugHunterScreen() {
         }
     }
 
+    fun startAssessment() {
+        if (token.isBlank()) {
+            status = "Connect to the Termux engine first."
+            return
+        }
+        busy = true
+        scope.launch {
+            try {
+                val body = JSONObject()
+                    .put("mode", "local_only")
+                    .put("program", selectedOpportunity?.name ?: "")
+                    .toString()
+                withContext(Dispatchers.IO) { apiPost("/assessment/start", token, body) }
+                assessmentRunning = true
+                assessmentStatus = "Local assessment started…"
+                status = "One-tap local assessment started. Live-target testing remains blocked."
+                for (attempt in 0 until 300) {
+                    delay(1000)
+                    val job = withContext(Dispatchers.IO) {
+                        JSONObject(apiCall("/assessment/status", token))
+                    }
+                    val state = job.optString("status")
+                    assessmentRunning = state in listOf("queued", "running")
+                    assessmentStatus = when (state) {
+                        "queued" -> "Assessment queued…"
+                        "running" -> "Running phase: " + job.optString("phase")
+                        "completed" -> "Completed. Report draft: " + job.optString("report")
+                        "stopped" -> "Stopped: " + job.optString("stop_reason")
+                        "failed" -> "Failed: " + job.optString("error")
+                        else -> assessmentStatus
+                    }
+                    if (!assessmentRunning) break
+                }
+            } catch (error: Exception) {
+                assessmentStatus = error.message ?: "Could not start local assessment."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun stopAssessment() {
+        if (token.isBlank()) return
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { apiPost("/assessment/stop", token, "{}") }
+                assessmentStatus = "Emergency stop requested…"
+            } catch (error: Exception) {
+                assessmentStatus = error.message ?: "Could not request emergency stop."
+            }
+        }
+    }
+
     MaterialTheme {
         Scaffold(
             topBar = { TopAppBar(title = { Text("BugHunter AI · " + activeSection) }) },
@@ -502,6 +569,26 @@ private fun BugHunterScreen() {
                             }
                             Text(if (connected) "Connected" else "Not connected",
                                 color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+                item {
+                    Card {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("ONE-TAP LOCAL ASSESSMENT", style = MaterialTheme.typography.titleMedium)
+                            Text(assessmentStatus, style = MaterialTheme.typography.bodySmall)
+                            Text("Scans local source and supported documents, runs static checks and offline synthetic impact simulation, saves evidence and a report draft. No target network requests, no live exploit tests, and no automatic submission.",
+                                style = MaterialTheme.typography.bodySmall)
+                            Button(
+                                onClick = { startAssessment() },
+                                enabled = connected && !busy && !assessmentRunning,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Start Full Local Assessment") }
+                            OutlinedButton(
+                                onClick = { stopAssessment() },
+                                enabled = connected && assessmentRunning,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Emergency Stop") }
                         }
                     }
                 }
