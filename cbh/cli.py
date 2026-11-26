@@ -316,6 +316,26 @@ def cmd_recon(args: argparse.Namespace) -> int:
         print("[error] recon target must be a hostname without a scheme, port, or path",
               file=sys.stderr)
         return 1
+    # Require an explicit engagement scope before reconnaissance.
+    scope_path = Path(getattr(args, "scope_file", None) or "scope.md").expanduser().resolve()
+    if not scope_path.is_file():
+        print(f"[error] scope file not found: {scope_path}", file=sys.stderr)
+        return 1
+
+    engine_dir = REPO_ROOT / "engine"
+    if str(engine_dir) not in sys.path:
+        sys.path.insert(0, str(engine_dir))
+
+    try:
+        from scope import _scope_from_md
+        scope = _scope_from_md(str(scope_path))
+    except Exception as exc:
+        print(f"[error] could not load scope file: {exc}", file=sys.stderr)
+        return 1
+
+    for warning in getattr(scope, "warnings", []):
+        say(f"[scope warning] {warning}")
+
     # Clone mode writes under the repo; installed mode writes under the CWD
     # (never into site-packages). Override with --out.
     recon_root = Path(args.out).resolve() if getattr(args, "out", None) \
@@ -348,9 +368,14 @@ def cmd_recon(args: argparse.Namespace) -> int:
     # A certificate can include SANs from unrelated domains. Treat both
     # passive sources as untrusted before resolving or probing candidates.
     candidates = {_recon_hostname(candidate) for candidate in subs}
-    subs = {host for host in candidates
-            if host is not None and (host == target or host.endswith("." + target))}
-    subs.add(target)
+    subs = {
+        host for host in candidates
+        if host is not None
+        and (host == target or host.endswith("." + target))
+        and scope.in_scope_host(host)
+    }
+    if scope.in_scope_host(target):
+        subs.add(target)
     (out_dir / "subdomains.txt").write_text("\n".join(sorted(subs)) + "\n", encoding="utf-8")
     say(f"  Total unique: {color(str(len(subs)), 'bold')}")
 
@@ -1201,6 +1226,7 @@ def main() -> int:
     p_recon.add_argument("target", help="root domain, e.g. hackerone.com")
     p_recon.add_argument("--out", help="output directory for recon/<target>/ "
                          "(default: repo recon/ in a clone, ./recon/ when installed)")
+    p_recon.add_argument("--scope-file", help="engagement scope.md (default: ./scope.md)")
     _add_proxy_args(p_recon)
     p_recon.set_defaults(func=cmd_recon)
 
