@@ -478,6 +478,60 @@ class Engine:
         path = os.path.join(self.eng.dir, "report.md")
         open(path, "w", encoding="utf-8").write("\n".join(lines))
         self.eng.log(f"report: wrote {len(c)} confirmed finding(s) -> {path}")
+
+        # Platform-specific drafts are generated from verified findings only.
+        # These are review-ready starting points, never automatic submissions.
+        try:
+            from urllib.parse import urlparse
+            from cbh.cli import render_report
+            draft_dir = Path(self.eng.dir) / "submission-drafts"
+            if c:
+                draft_dir.mkdir(parents=True, exist_ok=True)
+
+            def safe_text(value):
+                value = verifier._redact(str(value or ""))
+                value = re.sub(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
+                value = re.sub(
+                    r"(?i)(authorization|proxy-authorization|cookie|set-cookie|x-api-key)([\\s:=]+)[^\\s,;]+",
+                    r"\\1\\2[REDACTED]", value,
+                )
+                return value
+
+            for index, finding in enumerate(c, 1):
+                url = finding.get("url", "")
+                vuln = finding.get("vuln_class", "security issue")
+                request = safe_text(finding.get("request", ""))
+                request_line = request.splitlines()[0] if request else "(captured request unavailable)"
+                verifier_reason = safe_text((finding.get("verdict") or {}).get("reason", ""))
+                evidence = safe_text(finding.get("evidence", ""))
+                impact = safe_text(finding.get("impact", ""))
+                if not impact:
+                    impact = ("Observed evidence: " + (evidence or "See the attached engagement evidence.")
+                              + "\\n\\nVerifier note: " + (verifier_reason or "No additional verifier detail.")
+                              + "\\n\\nResearcher review required: describe the concrete user, data, or business impact.")
+                md = {
+                    "title": safe_text(f"{vuln.upper()} at {url}"),
+                    "severity": safe_text(finding.get("severity", "Medium")),
+                    "asset": urlparse(url).hostname or url,
+                    "endpoint": url,
+                    "summary": safe_text(finding.get("summary") or
+                        f"An independently validated {vuln} issue was observed at {url}."),
+                    "steps": safe_text(finding.get("steps") or
+                        f"1. Send an HTTP request to {url}.\\n2. Request line captured by the engine: {request_line}.\\n"
+                        "3. Compare the observed response with the expected access-control or input-handling behaviour. "
+                        "Attach the saved evidence and verify these steps before submission."),
+                    "impact": impact,
+                    "remediation": safe_text(finding.get("remediation") or
+                        "Review the root cause and apply server-side authorization and input validation appropriate to the affected operation."),
+                }
+                for platform in ("h1", "bugcrowd", "intigriti"):
+                    draft = draft_dir / f"finding-{index:02d}-{platform}.md"
+                    draft.write_text(render_report(md, platform), encoding="utf-8")
+            if c:
+                self.eng.log(f"report: wrote {len(c) * 3} platform submission drafts -> {draft_dir}")
+        except Exception as e:
+            self.eng.log(f"report: platform draft generation skipped ({e})")
+
         if not self.mock and self.use_memory:
             try:
                 memory.record_run(self.scope.name, self._tech(), self.eng.state["tested"], self.eng.state["confirmed"])
