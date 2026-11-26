@@ -662,7 +662,6 @@ private fun BugHunterScreen() {
                 }
                 }
             }
-        }
         selectedOpportunity?.let { selected ->
             AlertDialog(
                 onDismissRequest = { selectedOpportunity = null },
