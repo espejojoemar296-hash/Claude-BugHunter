@@ -50,11 +50,13 @@ def _engine_scope(scope_file: Path, config: dict):
 
 def run_approved_engagement(config_path, *, max_hunts=10, parallel=2,
                             model="claude-sonnet-4-6", mock=False,
-                            expand=False, base=None):
-    """Execute recon -> rank -> map -> hunt -> validate -> report.
+                            expand=False, base=None, ai_hunt=False):
+    """Run a scoped engagement.
 
-    Normal runs require the Claude Code CLI and are read-only by default.
-    mock=True is an offline wiring test and never contacts the configured target.
+    The default path is deterministic and needs no model subscription:
+    recon -> rank -> map -> report. Pass ai_hunt=True to additionally run
+    model-driven hunt and validation (requires authenticated Claude Code).
+    mock=True runs the offline fixture pipeline and never contacts the target.
     """
     config_path = Path(config_path).expanduser().resolve()
     if not config_path.is_file():
@@ -71,10 +73,10 @@ def run_approved_engagement(config_path, *, max_hunts=10, parallel=2,
         raise ValueError(f"scope file not found: {scope_file}")
 
     scope, seeds = _engine_scope(scope_file, config)
-    if not mock and shutil.which("claude") is None:
+    if ai_hunt and not mock and shutil.which("claude") is None:
         raise RuntimeError(
-            "AI hunting requires the Claude Code CLI (claude) to be installed "
-            "and authenticated in Termux. No target requests were sent."
+            "AI hunting was requested, but Claude Code is not installed. "
+            "No target requests were sent."
         )
 
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(config.get("name") or scope.name)).strip("-")
@@ -101,7 +103,8 @@ def run_approved_engagement(config_path, *, max_hunts=10, parallel=2,
         parallel=max(1, min(int(parallel), 4)), expand=expand,
         use_memory=False, use_metrics=False,
     )
-    runner.run(ALL_PHASES)
+    phases = ALL_PHASES if (mock or ai_hunt) else ["recon", "rank", "map", "report"]
+    runner.run(phases)
     report_path = Path(runner.eng.dir) / "report.md"
     return {
         "ok": report_path.is_file(),
@@ -111,4 +114,6 @@ def run_approved_engagement(config_path, *, max_hunts=10, parallel=2,
         "report": str(report_path) if report_path.is_file() else "",
         "summary": runner.eng.summary(),
         "mock": bool(mock),
+        "ai_hunt": bool(ai_hunt and not mock),
+        "mode": "offline-mock" if mock else ("ai-assisted" if ai_hunt else "deterministic-no-ai"),
     }
