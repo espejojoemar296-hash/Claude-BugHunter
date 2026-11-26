@@ -491,10 +491,10 @@ class Engine:
 
             def safe_text(value):
                 value = verifier._redact(str(value or ""))
-                value = re.sub(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
+                value = re.sub(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
                 value = re.sub(
-                    r"(?i)(authorization|proxy-authorization|cookie|set-cookie|x-api-key)([\\s:=]+)[^\\s,;]+",
-                    r"\\1\\2[REDACTED]", value,
+                    r"(?i)(authorization|proxy-authorization|cookie|set-cookie|x-api-key)([\s:=]+)[^\s,;]+",
+                    r"\1\2[REDACTED]", value,
                 )
                 return value
 
@@ -508,8 +508,8 @@ class Engine:
                 impact = safe_text(finding.get("impact", ""))
                 if not impact:
                     impact = ("Observed evidence: " + (evidence or "See the attached engagement evidence.")
-                              + "\\n\\nVerifier note: " + (verifier_reason or "No additional verifier detail.")
-                              + "\\n\\nResearcher review required: describe the concrete user, data, or business impact.")
+                              + "\n\nVerifier note: " + (verifier_reason or "No additional verifier detail.")
+                              + "\n\nResearcher review required: describe the concrete user, data, or business impact.")
                 md = {
                     "title": safe_text(f"{vuln.upper()} at {url}"),
                     "severity": safe_text(finding.get("severity", "Medium")),
@@ -518,7 +518,7 @@ class Engine:
                     "summary": safe_text(finding.get("summary") or
                         f"An independently validated {vuln} issue was observed at {url}."),
                     "steps": safe_text(finding.get("steps") or
-                        f"1. Send an HTTP request to {url}.\\n2. Request line captured by the engine: {request_line}.\\n"
+                        f"1. Send an HTTP request to {url}.\n2. Request line captured by the engine: {request_line}.\n"
                         "3. Compare the observed response with the expected access-control or input-handling behaviour. "
                         "Attach the saved evidence and verify these steps before submission."),
                     "impact": impact,
