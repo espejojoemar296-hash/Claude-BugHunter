@@ -1183,6 +1183,52 @@ def cmd_scope_import(args: argparse.Namespace) -> int:
 
 
 # ============================================================
+# hunt — read-only public bounty opportunity discovery
+# ============================================================
+def cmd_hunt(args: argparse.Namespace) -> int:
+    from cbh.hunt import PLATFORMS, discover
+
+    platforms = [args.platform] if args.platform else list(PLATFORMS)
+    try:
+        results, warnings = discover(
+            platforms=platforms, search=args.search,
+            bounty_only=args.bounty_only, open_only=args.open_only,
+            refresh=args.refresh, limit=args.limit,
+        )
+    except (ValueError, OSError) as exc:
+        print(f"[error] {exc}", file=sys.stderr)
+        return 1
+
+    for warning in warnings:
+        print(f"[warning] {warning}", file=sys.stderr)
+
+    print("=== PUBLIC BUG BOUNTY OPPORTUNITIES ===")
+    print("Scores are heuristic priorities, not payout or success predictions.")
+    print("Data comes from cached public platform records.\n")
+
+    if not results:
+        print("No matching programs found.")
+        return 0
+
+    for index, item in enumerate(results, 1):
+        print(f"{index}. {item['name']} [{item['score']}/100]")
+        print(f"   Platform: {item['platform']}")
+        print(f"   Handle: {item['handle']}")
+        print(f"   Status: {item['availability']}")
+        print(f"   Reward: {item['reward']}")
+        print(f"   In-scope host rules: {item['usable_assets']}")
+        print(f"   Web/API host rules: {item['web_api_assets']}")
+        print(f"   Manual review entries: {item['review_assets']}")
+        print(f"   Bounty-eligible assets identified: {item['bounty_assets']}")
+        print(f"   URL: {item['url']}\n")
+
+    print("Import a selected program's scope with:")
+    print("  cbh scope import <platform>:<handle> -o scope.md")
+    print("Review the program rules before any testing.")
+    return 0
+
+
+# ============================================================
 # Main dispatcher
 # ============================================================
 def main() -> int:
@@ -1262,6 +1308,17 @@ def main() -> int:
                                "(or set CBH_REPORTER); omitted -> placeholder")
     p_report.add_argument("--out", help="write draft to this path (else print to stdout)")
     p_report.set_defaults(func=cmd_report)
+
+    p_hunt = sub.add_parser("hunt", help="discover and rank public bounty programs")
+    p_hunt.add_argument("--platform", choices=[
+        "hackerone", "bugcrowd", "intigriti", "yeswehack"
+    ])
+    p_hunt.add_argument("--search", help="search program name or handle")
+    p_hunt.add_argument("--bounty-only", action="store_true")
+    p_hunt.add_argument("--open-only", action="store_true")
+    p_hunt.add_argument("--refresh", action="store_true")
+    p_hunt.add_argument("--limit", type=int, default=20)
+    p_hunt.set_defaults(func=cmd_hunt)
 
     p_scope = sub.add_parser("scope", help="program scope tools (import a program's scope into scope.md)")
     scope_sub = p_scope.add_subparsers(dest="scope_command", required=True)
