@@ -4,6 +4,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -44,6 +45,58 @@ def _start_discovery():
     thread = threading.Thread(target=worker, name="cbh-discovery", daemon=True)
     thread.start()
     return True
+
+
+def _approve_target(target, scope_file, name=""):
+    """Create an approved-target config only after the local scope engine accepts it."""
+    if not isinstance(target, str) or not target.strip() or len(target) > 2048:
+        raise ValueError("target must be a non-empty host or URL")
+    if not isinstance(scope_file, str) or not scope_file.strip() or len(scope_file) > 512:
+        raise ValueError("scope_file must be a repository-relative Markdown path")
+    relative = Path(scope_file)
+    if relative.is_absolute() or ".." in relative.parts or relative.suffix.lower() != ".md":
+        raise ValueError("scope_file must be a safe relative .md path inside the repository")
+
+    root = Path.cwd().resolve()
+    scope_path = (root / relative).resolve()
+    if root not in scope_path.parents or scope_path.is_symlink() or not scope_path.is_file():
+        raise ValueError("reviewed scope file was not found inside the repository")
+
+    engine_dir = Path(__file__).resolve().parent.parent / "engine"
+    import sys
+    if str(engine_dir) not in sys.path:
+        sys.path.insert(0, str(engine_dir))
+    from scope import _scope_from_md
+
+    scope = _scope_from_md(str(scope_path))
+    reason = scope.reject_reason(target.strip())
+    if reason:
+        raise ValueError("target rejected by scope: " + reason)
+
+    approved_root = root / "targets" / "approved"
+    approved_root.mkdir(parents=True, exist_ok=True)
+    if approved_root.is_symlink() or root not in approved_root.resolve().parents:
+        raise ValueError("approved-target directory is not a safe repository path")
+    slug = re.sub(r"[^a-z0-9]+", "-", target.lower()).strip("-")[:48] or "target"
+    filename = slug + ".json"
+    suffix = 2
+    while (approved_root / filename).exists():
+        filename = slug + "-" + str(suffix) + ".json"
+        suffix += 1
+    config = {
+        "name": (str(name).strip()[:120] if isinstance(name, str) and name.strip() else target.strip()),
+        "target": target.strip(),
+        "scope_file": os.path.relpath(scope_path, approved_root),
+    }
+    path = approved_root / filename
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump(config, stream, ensure_ascii=False, indent=2)
+        stream.write("\\n")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    return {"file": filename, "target": config["target"], "scope_file": config["scope_file"]}
 
 
 def _start_engagement(config_name):
@@ -379,6 +432,21 @@ def make_handler(token: str):
                         self._send(202, {"started": True})
                 except (ValueError, TypeError) as exc:
                     self._send(400, {"error": str(exc)[:200]})
+                return
+            if route == "/targets/approve":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length < 1 or length > 8192:
+                        raise ValueError("invalid request size")
+                    data = json.loads(self.rfile.read(length).decode("utf-8"))
+                    if not isinstance(data, dict):
+                        raise ValueError("JSON body must be an object")
+                    result = _approve_target(
+                        data.get("target"), data.get("scope_file"), data.get("name", "")
+                    )
+                    self._send(201, {"created": True, **result})
+                except (ValueError, TypeError, UnicodeError, json.JSONDecodeError, OSError) as exc:
+                    self._send(400, {"error": str(exc)[:240]})
                 return
             if route == "/engagement/run":
                 try:
