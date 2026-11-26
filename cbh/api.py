@@ -186,6 +186,7 @@ def _workspace_snapshot():
 
     # Read-only integration of the existing parent-level source audit.
     audit_path = root.parent / "audits" / "cli" / "source-scan-v4.0-report.json"
+    audit_candidates = []
     audit_summary = {
         "available": False, "path": "audits/cli/source-scan-v4.0-report.json",
         "scanner": "", "version": "", "created_at": "",
@@ -205,6 +206,22 @@ def _workspace_snapshot():
                     "limitations": [str(x)[:400] for x in data.get("limitations", [])[:12]]
                         if isinstance(data.get("limitations"), list) else [],
                 })
+                raw_findings = data.get("findings", [])
+                if isinstance(raw_findings, list):
+                    for finding in raw_findings[:100]:
+                        if not isinstance(finding, dict):
+                            continue
+                        audit_candidates.append({
+                            "file": str(finding.get("file") or "")[:300],
+                            "line": max(0, int(finding.get("line") or 0)),
+                            "category": str(finding.get("category") or "")[:100],
+                            "risk_score": max(0, int(finding.get("risk_score") or 0)),
+                            "priority": str(finding.get("priority") or "")[:40],
+                            "confidence": str(finding.get("confidence") or "")[:40],
+                            "function": str(finding.get("function") or "")[:160],
+                            "trace": str(finding.get("local_source_to_sink_trace") or "")[:1200],
+                            "review_guidance": str(finding.get("review_guidance") or "")[:1200],
+                        })
     except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
         pass
 
@@ -225,6 +242,7 @@ def _workspace_snapshot():
     return {
         "findings": files_in("findings"),
         "audit_summary": audit_summary,
+        "audit_candidates": audit_candidates,
         "verification_status_counts": verification_counts,
         "evidence": files_in("evidence"),
         "reports": files_in("reports") + files_in("drafts") + engagement_reports,
