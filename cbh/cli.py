@@ -1347,6 +1347,31 @@ def cmd_hunt(args: argparse.Namespace) -> int:
 
 
 # ============================================================
+# engage — full approved-scope engagement pipeline
+# ============================================================
+def cmd_engage(args: argparse.Namespace) -> int:
+    from cbh.engagement import run_approved_engagement
+
+    try:
+        result = run_approved_engagement(
+            args.config, max_hunts=args.max_hunts, parallel=args.parallel,
+            model=args.model, mock=args.mock, expand=args.expand, base=args.base,
+        )
+    except (ValueError, RuntimeError, OSError) as exc:
+        print(f"[error] {exc}", file=sys.stderr)
+        return 1
+
+    print("=== APPROVED-SCOPE ENGAGEMENT ===")
+    print(f"Program: {result['name']}")
+    print(f"Run: {result['run_id']}")
+    print(f"Mock/offline: {result['mock']}")
+    print(f"Summary: {json.dumps(result['summary'], sort_keys=True)}")
+    print(f"Engagement folder: {result['engagement_dir']}")
+    print(f"Report: {result['report'] or 'not generated'}")
+    return 0 if result["ok"] else 1
+
+
+# ============================================================
 # Main dispatcher
 # ============================================================
 def main() -> int:
@@ -1438,6 +1463,15 @@ def main() -> int:
     p_hunt.add_argument("--limit", type=int, default=20)
     p_hunt.set_defaults(func=cmd_hunt)
 
+    p_engage = sub.add_parser("engage", help="run full recon/hunt/validate/report on one approved target")
+    p_engage.add_argument("config", help="JSON file in targets/approved/ with target and scope_file")
+    p_engage.add_argument("--max-hunts", type=int, default=10)
+    p_engage.add_argument("--parallel", type=int, default=2)
+    p_engage.add_argument("--model", default="claude-sonnet-4-6")
+    p_engage.add_argument("--base", help="engagement state directory")
+    p_engage.add_argument("--expand", action="store_true", help="include discovered in-scope subdomains")
+    p_engage.add_argument("--mock", action="store_true", help="offline full-pipeline test; never contacts target")
+    p_engage.set_defaults(func=cmd_engage)
 
     p_validate = sub.add_parser("validate", help="offline scope and evidence checks")
     p_validate.add_argument("finding")
