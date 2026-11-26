@@ -250,8 +250,10 @@ def make_handler(token: str):
             if route == "/opportunities/refresh":
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
-                    if length > 1024:
+                    if length < 0 or length > 1024:
                         raise ValueError("invalid request size")
+                    if length:
+                        self.rfile.read(length)
                     started = _start_discovery()
                     if not started:
                         self._send(409, {"error": "opportunity discovery is already running"})
