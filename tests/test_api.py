@@ -193,8 +193,10 @@ class LocalApiTests(unittest.TestCase):
             scopes = root / "scopes"
             scopes.mkdir(parents=True)
             (scopes / "demo.md").write_text(
-                "# Scope - Demo\\n\\n## In scope\\n- app.example.test\\n"
-                "\\n## Out of scope\\n- admin.example.test\\n",
+                "\\n".join([
+                    "# Scope - Demo", "", "## In scope", "- app.example.test", "",
+                    "## Out of scope", "- admin.example.test", "",
+                ]),
                 encoding="utf-8",
             )
             with patch("cbh.api.Path.cwd", return_value=root):
