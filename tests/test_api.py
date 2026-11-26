@@ -193,7 +193,7 @@ class LocalApiTests(unittest.TestCase):
             scopes = root / "scopes"
             scopes.mkdir(parents=True)
             (scopes / "demo.md").write_text(
-                "\\n".join([
+                "\n".join([
                     "# Scope - Demo", "", "## In scope", "- app.example.test", "",
                     "## Out of scope", "- admin.example.test", "",
                 ]),
