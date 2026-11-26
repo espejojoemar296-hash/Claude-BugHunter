@@ -270,7 +270,7 @@ private fun BugHunterScreen() {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("ENGAGEMENT STATUS", style = MaterialTheme.typography.titleMedium)
                             Text(engagementStatus, style = MaterialTheme.typography.bodySmall)
-                            Text("Runs recon, AI-assisted hunting, validation and report drafting. Read-only by default; no automatic report submission.",
+                            Text("Runs scope-checked recon, endpoint discovery, risk ranking and a report without a paid AI subscription. Findings are leads, not confirmed vulnerabilities. No automatic report submission.",
                                 style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -294,7 +294,7 @@ private fun BugHunterScreen() {
                                 onClick = { startEngagement(item.file) },
                                 enabled = connected && !busy,
                                 modifier = Modifier.fillMaxWidth()
-                            ) { Text("Start read-only hunt") }
+                            ) { Text("Start scope recon") }
                         }
                     }
                 }
