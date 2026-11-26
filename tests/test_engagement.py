@@ -38,12 +38,26 @@ class ApprovedEngagementTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "seed is not authorized"):
                 run_approved_engagement(config, mock=True)
 
-    def test_missing_claude_cli_stops_before_network_activity(self):
+    def test_default_mode_runs_deterministic_phases_without_claude(self):
         with tempfile.TemporaryDirectory() as tmp:
-            config = self._fixture(Path(tmp))
-            with patch("cbh.engagement.shutil.which", return_value=None):
-                with self.assertRaisesRegex(RuntimeError, "No target requests were sent"):
-                    run_approved_engagement(config, mock=False)
+            root = Path(tmp)
+            config = self._fixture(root)
+            output = root / "deterministic-run"
+            with patch("cbh.engagement.shutil.which", return_value=None), \
+                 patch("engine.engine.Engine") as engine_cls:
+                runner = engine_cls.return_value
+                runner.eng.dir = str(output)
+                runner.eng.summary.return_value = {"surface": 0, "tested": 0, "confirmed": 0}
+                def finish(phases):
+                    output.mkdir(parents=True, exist_ok=True)
+                    (output / "report.md").write_text("# Deterministic report\\n", encoding="utf-8")
+                    runner.phases = phases
+                runner.run.side_effect = finish
+                result = run_approved_engagement(config, base=root / "runs")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["mode"], "deterministic-no-ai")
+            self.assertEqual(runner.phases, ["recon", "rank", "map", "report"])
 
     def test_mock_full_pipeline_writes_report_without_network(self):
         with tempfile.TemporaryDirectory() as tmp:
