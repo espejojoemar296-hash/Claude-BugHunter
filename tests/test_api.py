@@ -55,6 +55,20 @@ class LocalApiTests(unittest.TestCase):
             urlopen(req, timeout=3)
         self.assertEqual(caught.exception.code, 400)
 
+    def test_workspace_includes_engagement_report_drafts(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from cbh.api import _workspace_snapshot
+
+        with tempfile.TemporaryDirectory() as tmp:
+            report = Path(tmp) / ".bughunter-engagements" / "acme" / "report.md"
+            report.parent.mkdir(parents=True)
+            report.write_text("# Draft", encoding="utf-8")
+            with patch("cbh.api.Path.home", return_value=Path(tmp)):
+                snapshot = _workspace_snapshot()
+            self.assertTrue(any(item["path"] == str(report) for item in snapshot["reports"]))
+
     def test_api_refuses_non_loopback_binding(self):
         from cbh.api import serve
         with self.assertRaises(ValueError):
