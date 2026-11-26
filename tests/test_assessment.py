@@ -39,7 +39,7 @@ class AssessmentTests(unittest.TestCase):
     def test_assessment_deduplicates_identical_candidates(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "a.py").write_text("eval(x)\neval(x)\n", encoding="utf-8")
+            (root / "a.py").write_text("eval(x); eval(x)\n", encoding="utf-8")
             result = assessment._scan(root, "dedupe-test")
             self.assertEqual(len(result["findings"]), 1)
 
