@@ -40,6 +40,36 @@ class LocalApiTests(unittest.TestCase):
         payload = json.loads(caught.exception.read().decode("utf-8"))
         self.assertEqual(payload["error"], "not_found")
 
+    def test_opportunity_discovery_status_is_available(self):
+        status, payload = self.request("/opportunities/status")
+        self.assertEqual(status, 200)
+        self.assertIn(payload["status"], ("idle", "running", "completed", "failed"))
+
+    def test_opportunity_refresh_runs_in_background(self):
+        import time
+        from unittest.mock import patch
+
+        body = b"{}"
+        req = Request(
+            self.base + "/opportunities/refresh", data=body, method="POST",
+            headers={"Authorization": "Bearer test-secret", "Content-Type": "application/json"},
+        )
+        with patch("cbh.hunt.discover", return_value=([{"handle": "demo"}], [])), \
+             patch("cbh.api.automation.record_opportunities", return_value=1):
+            with urlopen(req, timeout=3) as response:
+                self.assertEqual(response.status, 202)
+            deadline = time.time() + 2
+            payload = {}
+            while time.time() < deadline:
+                _, payload = self.request("/opportunities/status")
+                if payload.get("status") in ("completed", "failed"):
+                    break
+                time.sleep(0.01)
+
+        self.assertEqual(payload.get("status"), "completed")
+        self.assertEqual(payload.get("checked"), 1)
+        self.assertEqual(payload.get("added"), 1)
+
     def test_engagement_status_requires_token_and_is_available(self):
         status, payload = self.request("/engagement/status")
         self.assertEqual(status, 200)
