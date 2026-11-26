@@ -194,6 +194,65 @@ def _workspace_snapshot():
     }
 
 
+
+def _opportunity_details(rows):
+    """Attach published scope metadata from the local bounty-targets-data cache."""
+    from cbh import scope_import as si
+
+    wanted = {(str(row.get("platform") or ""), str(row.get("handle") or "")) for row in rows}
+    by_platform = {}
+    for platform, handle in wanted:
+        if platform not in by_platform:
+            try:
+                records, _ = si.load_platform(platform, refresh=False)
+                by_platform[platform] = {
+                    str(si._record_handle(platform, rec) or ""): rec
+                    for rec in records
+                }
+            except Exception:
+                by_platform[platform] = {}
+
+    result = []
+    for row in rows:
+        item = dict(row)
+        platform, handle = str(item.get("platform") or ""), str(item.get("handle") or "")
+        rec = by_platform.get(platform, {}).get(handle)
+        details = {
+            "in_scope": [], "out_of_scope": [], "needs_review": [],
+            "other_assets": [], "conduct": [],
+            "scope_source": "public program dataset; verify on the platform before testing",
+        }
+        if rec:
+            try:
+                program = si.program_from_record(platform, rec)
+                for entry in program.entries[:500]:
+                    asset = {
+                        "asset": str(entry.raw)[:200],
+                        "type": str(entry.asset_type)[:80],
+                        "status": str(entry.status)[:40],
+                        "bounty_eligible": entry.bounty,
+                        "severity": str(entry.severity)[:80],
+                        "instruction": str(entry.instruction)[:200],
+                        "notes": str(entry.reason)[:200],
+                        "rules": [str(rule)[:200] for rule in entry.rules[:20]],
+                    }
+                    if entry.side == "out":
+                        details["out_of_scope"].append(asset)
+                    elif entry.status == "rule":
+                        details["in_scope"].append(asset)
+                    elif entry.status == "other":
+                        details["other_assets"].append(asset)
+                    else:
+                        details["needs_review"].append(asset)
+                details["conduct"] = [str(x)[:300] for x in program.conduct[:50]]
+            except Exception as exc:
+                details["scope_source"] = "scope details unavailable: " + type(exc).__name__
+        else:
+            details["scope_source"] = "scope data not present in local cache; open the platform page to verify"
+        item["details"] = details
+        result.append(item)
+    return result
+
 def make_handler(token: str):
     class Handler(BaseHTTPRequestHandler):
         server_version = "CBHLocalAPI/1"
@@ -226,7 +285,8 @@ def make_handler(token: str):
                     limit = max(1, min(int(query.get("limit", ["50"])[0]), 200))
                 except (TypeError, ValueError):
                     limit = 50
-                self._send(200, {"opportunities": automation.list_opportunities(limit=limit)})
+                rows = automation.list_opportunities(limit=limit)
+                self._send(200, {"opportunities": _opportunity_details(rows)})
             elif route == "/opportunities/status":
                 with _DISCOVERY_LOCK:
                     self._send(200, dict(_DISCOVERY_JOB))
