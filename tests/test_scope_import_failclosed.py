@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 from cbh import scope_import as si
-from scope import _scope_from_md
+from engine.scope import _scope_from_md
 
 
 def _scope_of(text):

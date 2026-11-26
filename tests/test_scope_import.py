@@ -16,7 +16,7 @@ from unittest import mock
 
 from cbh import cli
 from cbh import scope_import as si
-from scope import _scope_from_md
+from engine.scope import _scope_from_md
 
 REPO = Path(__file__).resolve().parent.parent
 
