@@ -1356,7 +1356,7 @@ def cmd_engage(args: argparse.Namespace) -> int:
         result = run_approved_engagement(
             args.config, max_hunts=args.max_hunts, parallel=args.parallel,
             model=args.model, mock=args.mock, expand=args.expand, base=args.base,
-            ai_hunt=args.ai_hunt,
+            ai_hunt=getattr(args, "ai_hunt", False),
         )
     except (ValueError, RuntimeError, OSError) as exc:
         print(f"[error] {exc}", file=sys.stderr)
