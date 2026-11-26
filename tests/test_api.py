@@ -70,6 +70,30 @@ class LocalApiTests(unittest.TestCase):
         self.assertEqual(payload.get("checked"), 1)
         self.assertEqual(payload.get("added"), 1)
 
+
+    def test_opportunities_include_published_scope_details(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        rows = [{"platform": "hackerone", "handle": "demo", "name": "Demo"}]
+        record = {"name": "Demo", "targets": {}}
+        entry = SimpleNamespace(
+            raw="app.example.test", asset_type="URL", status="rule",
+            side="in", bounty=True, severity="high", instruction="",
+            reason="", rules=[r"re:^app\\.example\\.test$"],
+        )
+        program = SimpleNamespace(entries=[entry], conduct=["No denial of service"])
+        with patch("cbh.automation.list_opportunities", return_value=rows), \\
+             patch("cbh.scope_import.load_platform", return_value=([record], "cache")), \\
+             patch("cbh.scope_import._record_handle", return_value="demo"), \\
+             patch("cbh.scope_import.program_from_record", return_value=program):
+            from cbh.api import _opportunity_details
+            result = _opportunity_details(rows)
+
+        self.assertEqual(result[0]["details"]["in_scope"][0]["asset"], "app.example.test")
+        self.assertEqual(result[0]["details"]["out_of_scope"], [])
+        self.assertEqual(result[0]["details"]["conduct"], ["No denial of service"])
+
     def test_engagement_status_requires_token_and_is_available(self):
         status, payload = self.request("/engagement/status")
         self.assertEqual(status, 200)
