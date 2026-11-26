@@ -144,6 +144,10 @@ private fun BugHunterScreen() {
     var telegramConfigured by remember { mutableStateOf(false) }
     var engagementStatus by remember { mutableStateOf("No engagement has been run.") }
     var busy by remember { mutableStateOf(false) }
+    var activeSection by remember { mutableStateOf("Dashboard") }
+    var auditSummary by remember { mutableStateOf("No source audit report found.") }
+    var verificationSummary by remember { mutableStateOf("No verification workspaces found.") }
+    val sections = listOf("Dashboard", "Programs", "Workspace", "Findings", "Verification", "Finance")
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(connected, token) {
@@ -250,6 +254,34 @@ private fun BugHunterScreen() {
                 findings = workspaceFiles(workspace, "findings")
                 evidence = workspaceFiles(workspace, "evidence")
                 reports = workspaceFiles(workspace, "reports")
+                val audit = workspace.optJSONObject("audit_summary")
+                auditSummary = if (audit != null && audit.optBoolean("available")) {
+                    "Scanner: " + audit.optString("scanner") +
+                        " · Version: " + audit.optString("version") +
+                        "\\nCreated: " + audit.optString("created_at") +
+                        "\\nFiles scanned: " + audit.optInt("files_scanned") +
+                        "\\nCandidate findings: " + audit.optInt("finding_count") +
+                        "\\nCandidates are not confirmed vulnerabilities."
+                } else {
+                    "No readable source-scan-v4.0-report.json found beside the repository."
+                }
+                val counts = workspace.optJSONObject("verification_status_counts")
+                verificationSummary = if (counts != null) {
+                    var total = 0
+                    val states = mutableListOf<String>()
+                    val keys = counts.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val count = counts.optInt(key)
+                        total += count
+                        states.add(key + ": " + count)
+                    }
+                    "Total workspaces: " + total +
+                        if (states.isEmpty()) "" else "\\n" + states.joinToString(" · ")
+                } else {
+                    "Verification summary unavailable."
+                }
+
                 approvals = targetList
                 telegramConfigured = workspace.optBoolean("telegram_configured")
                 val job = JSONObject(payload[4])
@@ -369,12 +401,25 @@ private fun BugHunterScreen() {
 
     MaterialTheme {
         Scaffold(
-            topBar = { TopAppBar(title = { Text("BugHunter AI") }) }
+            topBar = { TopAppBar(title = { Text("BugHunter AI · " + activeSection) }) },
+            bottomBar = {
+                NavigationBar {
+                    sections.forEach { section ->
+                        NavigationBarItem(
+                            selected = activeSection == section,
+                            onClick = { activeSection = section },
+                            icon = { Text(section.take(1)) },
+                            label = { Text(section) }
+                        )
+                    }
+                }
+            }
         ) { padding ->
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (activeSection == "Dashboard") {
                 item {
                     Card {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -393,6 +438,8 @@ private fun BugHunterScreen() {
                         }
                     }
                 }
+                }
+                if (activeSection == "Programs") {
                 item {
                     Text("BOUNTY OPPORTUNITIES", style = MaterialTheme.typography.titleMedium)
                     Text(opportunities.size.toString() + " saved opportunities")
@@ -418,6 +465,8 @@ private fun BugHunterScreen() {
                         }
                     }
                 }
+                }
+                if (activeSection == "Finance") {
                 item {
                     Card {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -464,6 +513,8 @@ private fun BugHunterScreen() {
                     }
                 }
 
+                }
+                if (activeSection == "Findings") {
                 item { Text("FINDINGS", style = MaterialTheme.typography.titleMedium) }
                 if (findings.isEmpty()) item { Text("No findings files in findings/.") }
                 else items(findings) { Text(it.path + " · " + it.size + " bytes") }
@@ -476,6 +527,8 @@ private fun BugHunterScreen() {
                 if (reports.isEmpty()) item { Text("No files in reports/ or drafts/.") }
                 else items(reports) { Text(it.path + " · " + it.size + " bytes") }
 
+                }
+                if (activeSection == "Workspace") {
                 item {
                     Card {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -484,6 +537,8 @@ private fun BugHunterScreen() {
                         }
                     }
                 }
+                }
+                if (activeSection == "Dashboard") {
                 item {
                     Card {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -517,6 +572,8 @@ private fun BugHunterScreen() {
                         }
                     }
                 }
+                }
+                if (activeSection == "Dashboard") {
                 item {
                     Card {
                         Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -525,11 +582,34 @@ private fun BugHunterScreen() {
                         }
                     }
                 }
+                }
+                if (activeSection == "Verification") {
+                    item {
+                        Card {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("SOURCE AUDIT", style = MaterialTheme.typography.titleMedium)
+                                Text(auditSummary, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    item {
+                        Card {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("VERIFICATION STATUS", style = MaterialTheme.typography.titleMedium)
+                                Text(verificationSummary, style = MaterialTheme.typography.bodySmall)
+                                Text("NOT_TESTED means no verification has been performed. Static-analysis candidates are leads, not confirmed vulnerabilities.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
                 item {
                     Text(
                         "Safety: the companion connects only to 127.0.0.1. It does not run scans, exploit targets, or submit reports. Configure Telegram with cbh telegram-setup in Termux.",
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
                 }
             }
         }
