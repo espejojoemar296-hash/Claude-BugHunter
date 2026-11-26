@@ -138,7 +138,10 @@ def _workspace_snapshot():
     engagement_reports = []
     engagement_root = Path.home() / ".bughunter-engagements"
     if engagement_root.is_dir():
-        for path in sorted(engagement_root.glob("*/report.md"))[-100:]:
+        engagement_files = list(engagement_root.glob("*/report.md")) + list(
+            engagement_root.glob("*/submission-drafts/*.md")
+        )
+        for path in sorted(engagement_files)[-100:]:
             try:
                 if path.is_file() and not path.is_symlink():
                     engagement_reports.append({"path": str(path), "name": path.name, "size": path.stat().st_size})
