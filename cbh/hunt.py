@@ -74,16 +74,16 @@ def _asset_counts(program):
     return len(usable), len(review), web_api, bounty_assets
 
 
-def _score(reward, usable, review, web_api, availability):
-    # A transparent prioritization heuristic, not a payout prediction.
-    reward_points = 25 if reward else 0
-    web_api_points = min(25, web_api * 0.5)
+def _score(reward, usable, review, web_api, bounty_assets, availability):
+    # Transparent prioritization heuristic, not a payout prediction.
+    reward_points = 10 if reward else 0
+    web_api_points = 20 * web_api / (web_api + 20) if web_api > 0 else 0
     clarity_points = 20 * usable / max(1, usable + review)
-    breadth_points = min(20, usable * 0.25)
-    status_points = 10 if availability is True else 0
-    review_penalty = min(10, review * 2)
+    bounty_points = 25 * bounty_assets / max(1, usable)
+    status_points = 25 if availability is True else 0
+    review_penalty = min(15, review * 1.5)
     return round(max(0, reward_points + web_api_points + clarity_points
-                     + breadth_points + status_points - review_penalty))
+                     + bounty_points + status_points - review_penalty))
 
 
 def discover(platforms=None, search=None, bounty_only=False,
@@ -126,7 +126,7 @@ def discover(platforms=None, search=None, bounty_only=False,
 
             program = si.program_from_record(platform, rec)
             usable, review, web_api, bounty_assets = _asset_counts(program)
-            score = _score(has_reward, usable, review, web_api, is_open)
+            score = _score(has_reward, usable, review, web_api, bounty_assets, is_open)
 
             results.append({
                 "platform": platform, "handle": handle, "name": name,

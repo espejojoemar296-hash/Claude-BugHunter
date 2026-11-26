@@ -74,14 +74,30 @@ class HuntTests(unittest.TestCase):
         self.assertEqual(hunt._asset_counts(program), (3, 1, 2, 3))
 
     def test_score_distinguishes_different_asset_coverage(self):
-        smaller = hunt._score(True, 10, 0, 8, True)
-        larger = hunt._score(True, 40, 0, 30, True)
+        smaller = hunt._score(True, 10, 0, 8, 10, True)
+        larger = hunt._score(True, 40, 0, 30, 40, True)
         self.assertGreater(larger, smaller)
         self.assertLessEqual(larger, 100)
 
+    def test_bounty_eligible_assets_increase_score(self):
+        eligible = hunt._score(True, 20, 0, 10, 15, True)
+        ineligible = hunt._score(True, 20, 0, 10, 0, True)
+        self.assertGreater(eligible, ineligible)
+
+    def test_web_api_points_have_diminishing_returns(self):
+        low_gain = (
+            hunt._score(True, 20, 0, 20, 20, True)
+            - hunt._score(True, 20, 0, 10, 20, True)
+        )
+        high_gain = (
+            hunt._score(True, 20, 0, 110, 20, True)
+            - hunt._score(True, 20, 0, 100, 20, True)
+        )
+        self.assertGreater(low_gain, high_gain)
+
     def test_manual_review_reduces_score(self):
-        clear = hunt._score(True, 10, 0, 8, True)
-        unclear = hunt._score(True, 10, 4, 8, True)
+        clear = hunt._score(True, 10, 0, 8, 10, True)
+        unclear = hunt._score(True, 10, 4, 8, 10, True)
         self.assertGreater(clear, unclear)
 
     def test_discover_filters_and_ranks(self):
