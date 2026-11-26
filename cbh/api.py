@@ -104,7 +104,7 @@ def _approve_target(target, scope_file, name=""):
     path = approved_root / filename
     with path.open("x", encoding="utf-8") as stream:
         json.dump(config, stream, ensure_ascii=False, indent=2)
-        stream.write("\\n")
+        stream.write("\n")
     try:
         path.chmod(0o600)
     except OSError:
