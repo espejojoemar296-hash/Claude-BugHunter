@@ -184,8 +184,48 @@ def _workspace_snapshot():
     except Exception:
         telegram_configured = False
 
+    # Read-only integration of the existing parent-level source audit.
+    audit_path = root.parent / "audits" / "cli" / "source-scan-v4.0-report.json"
+    audit_summary = {
+        "available": False, "path": "audits/cli/source-scan-v4.0-report.json",
+        "scanner": "", "version": "", "created_at": "",
+        "files_scanned": 0, "finding_count": 0, "limitations": [],
+    }
+    try:
+        if audit_path.is_file() and not audit_path.is_symlink():
+            data = json.loads(audit_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                audit_summary.update({
+                    "available": True,
+                    "scanner": str(data.get("scanner") or "")[:160],
+                    "version": str(data.get("version") or "")[:40],
+                    "created_at": str(data.get("created_at") or "")[:80],
+                    "files_scanned": max(0, int(data.get("files_scanned") or 0)),
+                    "finding_count": max(0, int(data.get("finding_count") or 0)),
+                    "limitations": [str(x)[:400] for x in data.get("limitations", [])[:12]]
+                        if isinstance(data.get("limitations"), list) else [],
+                })
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    verification_counts = {}
+    verification_root = root.parent / "verification" / "cli-v1" / "finding_workspaces"
+    if verification_root.is_dir() and not verification_root.is_symlink():
+        for finding_path in sorted(verification_root.glob("finding-*/finding.json"))[:5000]:
+            try:
+                if finding_path.is_symlink() or not finding_path.is_file():
+                    continue
+                item = json.loads(finding_path.read_text(encoding="utf-8"))
+                if isinstance(item, dict):
+                    state = str(item.get("verification_status") or "UNKNOWN")[:40]
+                    verification_counts[state] = verification_counts.get(state, 0) + 1
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                verification_counts["INVALID"] = verification_counts.get("INVALID", 0) + 1
+
     return {
         "findings": files_in("findings"),
+        "audit_summary": audit_summary,
+        "verification_status_counts": verification_counts,
         "evidence": files_in("evidence"),
         "reports": files_in("reports") + files_in("drafts") + engagement_reports,
         "scope": scope,
