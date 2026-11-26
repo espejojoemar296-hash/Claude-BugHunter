@@ -139,6 +139,8 @@ private fun BugHunterScreen() {
     var ledgerCurrency by remember { mutableStateOf("USD") }
     var ledgerNote by remember { mutableStateOf("") }
     var ledgerProgram by remember { mutableStateOf("") }
+    var targetInput by remember { mutableStateOf("") }
+    var scopeFileInput by remember { mutableStateOf("") }
     var discoveryStatus by remember { mutableStateOf("No discovery run yet.") }
     var findings by remember { mutableStateOf(listOf<WorkspaceFile>()) }
     var evidence by remember { mutableStateOf(listOf<WorkspaceFile>()) }
@@ -408,6 +410,40 @@ private fun BugHunterScreen() {
         }
     }
 
+    fun approveTarget() {
+        if (token.isBlank()) {
+            status = "Connect to the Termux engine first."
+            return
+        }
+        if (targetInput.isBlank() || scopeFileInput.isBlank()) {
+            status = "Enter a target and the path to its reviewed scope Markdown file."
+            return
+        }
+        busy = true
+        scope.launch {
+            var shouldRefresh = false
+            try {
+                val body = JSONObject()
+                    .put("target", targetInput.trim())
+                    .put("scope_file", scopeFileInput.trim())
+                    .toString()
+                val response = withContext(Dispatchers.IO) {
+                    apiPost("/targets/approve", token, body)
+                }
+                val result = JSONObject(response)
+                status = "Scope validated. Approved target saved: " + result.optString("file")
+                targetInput = ""
+                scopeFileInput = ""
+                shouldRefresh = true
+            } catch (error: Exception) {
+                status = error.message ?: "Could not approve target."
+            } finally {
+                busy = false
+            }
+            if (shouldRefresh) refresh()
+        }
+    }
+
     fun startEngagement(configFile: String) {
         if (token.isBlank()) {
             status = "Connect to the Termux engine first."
@@ -601,6 +637,30 @@ private fun BugHunterScreen() {
                     }
                 }
                 item {
+                    Card {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("ADD SCOPE-APPROVED TARGET", style = MaterialTheme.typography.titleMedium)
+                            OutlinedTextField(
+                                value = targetInput, onValueChange = { targetInput = it },
+                                label = { Text("Target host or URL") },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = scopeFileInput, onValueChange = { scopeFileInput = it },
+                                label = { Text("Reviewed scope file (e.g. scopes/program.md)") },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                            Text("The local scope engine must accept the target before an approval file is created. This does not start recon.",
+                                style = MaterialTheme.typography.bodySmall)
+                            Button(
+                                onClick = { approveTarget() },
+                                enabled = connected && !busy && targetInput.isNotBlank() && scopeFileInput.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Validate scope & approve target") }
+                        }
+                    }
+                }
+                item {
                     Text("APPROVED TARGETS", style = MaterialTheme.typography.titleMedium)
                     if (approvals.isEmpty()) Text("No approval files in targets/approved/.")
                 }
@@ -617,7 +677,7 @@ private fun BugHunterScreen() {
                             }
                             Button(
                                 onClick = { startEngagement(item.file) },
-                                enabled = connected && !busy,
+                                enabled = connected && !busy && item.scopePreview.isNotBlank(),
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Start scope recon") }
                         }
