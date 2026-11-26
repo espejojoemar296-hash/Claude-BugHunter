@@ -131,3 +131,31 @@ def inspect_url(url: str, scope_file: str, out_dir: str) -> dict:
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+def main(argv=None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(
+        prog="cbh-inspect",
+        description="Perform one low-impact, scope-gated GET and save HTTP evidence.",
+    )
+    parser.add_argument("url", help="one explicitly authorized HTTP(S) URL")
+    parser.add_argument("--scope-file", default="scope.md")
+    parser.add_argument("--out", default="evidence/inspection")
+    args = parser.parse_args(argv)
+    try:
+        result = inspect_url(args.url, args.scope_file, args.out)
+    except (ValueError, PermissionError, RuntimeError, OSError) as exc:
+        print("[blocked/error] " + str(exc))
+        return 2
+    print("One request completed; no redirects followed.")
+    print("HTTP status:", result["response_status"])
+    print("Evidence:", str(Path(args.out).expanduser().resolve()))
+    print("Credentialed CORS candidate:", "YES — manual verification required"
+          if result["checks"]["cors"]["candidate"] else "not observed")
+    print("Reproduction status remains INCONCLUSIVE; this is not a validated vulnerability.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
