@@ -311,6 +311,8 @@ class Engine:
                 cand = {"url": it["url"], "param": it.get("param", ""), "vuln_class": it.get("vuln_class"),
                         "severity": f.get("severity", "unknown"), "evidence": f.get("evidence", ""),
                         "request": f.get("request", ""), "proof_note": f.get("proof_note", ""),
+                        "summary": f.get("summary", ""), "steps": f.get("steps", ""),
+                        "impact": f.get("impact", ""), "remediation": f.get("remediation", ""),
                         "scope_warning": oos or None}
                 self.eng.mark_tested(it, candidate=cand, coverage="finding")
                 # Deterministic, read-only evidence capture (never gates promotion).
@@ -344,7 +346,9 @@ class Engine:
                 f"an error, or a permissive header) using ONLY in-scope, read-only actions. "
                 f"End with a fenced ```json``` object: "
                 f'{{"vulnerable":true|false,"severity":"low|medium|high|critical","evidence":"<what proves it>",'
-                f'"request":"<the winning request>","hosts_contacted":["every host you sent a request to"],'
+                f'"request":"<winning request with secrets removed>","hosts_contacted":["every host you sent a request to"],'
+                f'"summary":"<short factual summary or empty>","steps":"<reproducible steps using only demonstrated actions, or empty>",'
+                f'"impact":"<impact directly supported by observed evidence, or empty>","remediation":"<root-cause fix suggestion, or empty>",'
                 f'"proof_note":"<empty, or why proof was limited by scope/read-only>"}}.')
         r = A.run_agent(task, model=self.model, max_turns=self.max_turns, timeout=self.timeout)
         if r.get("error"):
@@ -389,6 +393,9 @@ class Engine:
                     verifier.corroborate(c)
                 except Exception as e:
                     self.eng.log(f"verifier: corroborate skipped ({e})")
+                for field in ("impact", "remediation"):
+                    if v.get(field):
+                        c[field] = v[field]
                 self.eng.confirm(c, v)
                 # Cross-engagement capture persists host/url — gated behind use_memory
                 # (symmetry with the skip/read side). Default = nothing pooled across
@@ -417,7 +424,8 @@ class Engine:
                 f"proof would require an out-of-scope host or an intrusive action, treat the impact as UNPROVEN and lower "
                 f"the severity. Is it a REAL, exploitable vulnerability or a false positive? "
                 f"End with a fenced ```json``` object: "
-                f'{{"real":true|false,"severity":"low|medium|high|critical","reason":"<why, incl. any scope/intrusive caveat>"}}.')
+                f'{{"real":true|false,"severity":"low|medium|high|critical","reason":"<why, incl. any scope/intrusive caveat>",'
+                f'"impact":"<only impact supported by the retest, or empty>","remediation":"<root-cause fix suggestion, or empty>"}}.')
         r = A.run_agent(task, model=self.model, max_turns=self.max_turns, timeout=self.timeout)
         if r.get("error"):
             self.eng.log(f"validate agent error: {r['error']}")
