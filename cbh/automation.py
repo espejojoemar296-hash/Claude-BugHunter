@@ -133,10 +133,16 @@ def notify(title, message):
                 check=False, timeout=10, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            return
         except (OSError, subprocess.TimeoutExpired):
             pass
     print(f"[notification] {title}: {message}", flush=True)
+    try:
+        from cbh.telegram import send_message
+        if send_message(f"{title}\\n{message}"):
+            print("[telegram] notification sent", flush=True)
+    except Exception as exc:
+        # Never let a messaging outage stop bounty discovery.
+        print(f"[telegram warning] notification unavailable: {type(exc).__name__}", flush=True)
 
 
 def scan_approved_targets(approved_dir):

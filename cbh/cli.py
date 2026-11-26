@@ -836,6 +836,39 @@ def cmd_autopilot(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_telegram_setup(args: argparse.Namespace) -> int:
+    import getpass
+    from cbh import telegram
+
+    token = getpass.getpass("Paste Telegram bot token (input hidden): ").strip()
+    try:
+        chats = telegram.get_chats(token)
+    except Exception as exc:
+        print(f"[error] Telegram connection failed: {type(exc).__name__}", file=sys.stderr)
+        return 1
+    if not chats:
+        print("No chat found yet. Open your bot in Telegram, press Start, send /start,")
+        print("then run this setup command again.")
+        return 1
+    print("Chats that have contacted your bot:")
+    for chat in chats:
+        print(f"  {chat['id']}  {chat['name']}  ({chat['type']})")
+    chat_id = input("Enter the chat ID to receive CBH alerts: ").strip()
+    if chat_id not in {item["id"] for item in chats}:
+        print("[error] Choose one of the chat IDs listed above.", file=sys.stderr)
+        return 2
+    try:
+        path = telegram.configure(token, chat_id)
+        if not telegram.send_message("CBH Telegram notifications are configured."):
+            raise RuntimeError("configuration could not be loaded")
+    except Exception as exc:
+        print(f"[error] Telegram setup failed: {type(exc).__name__}", file=sys.stderr)
+        return 1
+    print(f"Telegram configured. Private settings saved to: {path}")
+    print("The bot token is not stored in the repository.")
+    return 0
+
+
 def cmd_ledger(args: argparse.Namespace) -> int:
     from cbh import automation
     if args.ledger_action == "add":
@@ -1419,6 +1452,9 @@ def main() -> int:
     p_auto.add_argument("--scan-approved", action="store_true")
     p_auto.add_argument("--approved-dir", default="targets/approved")
     p_auto.set_defaults(func=cmd_autopilot)
+
+    p_telegram = sub.add_parser("telegram-setup", help="configure private Telegram notifications")
+    p_telegram.set_defaults(func=cmd_telegram_setup)
 
     p_ledger = sub.add_parser("ledger", help="local bounty income and expense ledger")
     ledger_sub = p_ledger.add_subparsers(dest="ledger_action", required=True)
