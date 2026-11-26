@@ -15,7 +15,9 @@ The local API stores its token outside the repository at ~/.config/claude-bughun
 
 - Native dashboard for saved bounty opportunities.
 - Reads the local bounty income/expense ledger.
-- Displays Termux engine connection state.
+- Lists finding, evidence, and report-draft files.
+- Shows the scope file preview and approved-target configuration summaries.
+- Shows whether Telegram notifications are configured.
 - Does not expose recon, exploitation, or report-submission controls through the mobile API.
 
 ## Build

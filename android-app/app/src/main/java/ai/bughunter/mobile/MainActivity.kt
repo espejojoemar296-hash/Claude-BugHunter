@@ -25,15 +25,12 @@ class MainActivity : ComponentActivity() {
 }
 
 private data class Opportunity(
-    val name: String,
-    val platform: String,
-    val handle: String,
-    val reward: String,
-    val url: String,
-    val score: Int
+    val name: String, val platform: String, val handle: String,
+    val reward: String, val url: String, val score: Int
 )
-
 private data class LedgerLine(val label: String, val value: String)
+private data class WorkspaceFile(val path: String, val size: Int)
+private data class ApprovedTarget(val file: String, val target: String, val scopeFile: String)
 
 private fun apiCall(path: String, token: String): String {
     val connection = URL("http://127.0.0.1:8765" + path).openConnection() as HttpURLConnection
@@ -52,6 +49,16 @@ private fun apiCall(path: String, token: String): String {
     }
 }
 
+private fun workspaceFiles(json: JSONObject, key: String): List<WorkspaceFile> {
+    val array = json.getJSONArray(key)
+    val result = mutableListOf<WorkspaceFile>()
+    for (i in 0 until array.length()) {
+        val item = array.getJSONObject(i)
+        result.add(WorkspaceFile(item.optString("path"), item.optInt("size")))
+    }
+    return result
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BugHunterScreen() {
@@ -60,6 +67,12 @@ private fun BugHunterScreen() {
     var status by remember { mutableStateOf("Connect to the Termux engine on this device.") }
     var opportunities by remember { mutableStateOf(listOf<Opportunity>()) }
     var ledger by remember { mutableStateOf(listOf<LedgerLine>()) }
+    var findings by remember { mutableStateOf(listOf<WorkspaceFile>()) }
+    var evidence by remember { mutableStateOf(listOf<WorkspaceFile>()) }
+    var reports by remember { mutableStateOf(listOf<WorkspaceFile>()) }
+    var approvals by remember { mutableStateOf(listOf<ApprovedTarget>()) }
+    var scopePreview by remember { mutableStateOf("No scope.md found in the project folder.") }
+    var telegramConfigured by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -71,24 +84,26 @@ private fun BugHunterScreen() {
         busy = true
         scope.launch {
             try {
-                val opportunityJson = withContext(Dispatchers.IO) {
-                    apiCall("/opportunities?limit=100", token)
+                val payload = withContext(Dispatchers.IO) {
+                    listOf(
+                        apiCall("/health", token),
+                        apiCall("/opportunities?limit=100", token),
+                        apiCall("/ledger", token),
+                        apiCall("/workspace", token)
+                    )
                 }
-                val list = JSONObject(opportunityJson).getJSONArray("opportunities")
+                val list = JSONObject(payload[1]).getJSONArray("opportunities")
                 val parsed = mutableListOf<Opportunity>()
                 for (i in 0 until list.length()) {
                     val item = list.getJSONObject(i)
                     parsed.add(Opportunity(
                         item.optString("name", item.optString("handle")),
-                        item.optString("platform"),
-                        item.optString("handle"),
-                        item.optString("reward"),
-                        item.optString("url"),
-                        item.optInt("score")
+                        item.optString("platform"), item.optString("handle"),
+                        item.optString("reward"), item.optString("url"), item.optInt("score")
                     ))
                 }
-                val ledgerJson = withContext(Dispatchers.IO) { apiCall("/ledger", token) }
-                val summary = JSONObject(ledgerJson).getJSONArray("summary")
+                val ledgerJson = JSONObject(payload[2])
+                val summary = ledgerJson.getJSONArray("summary")
                 val lines = mutableListOf<LedgerLine>()
                 for (i in 0 until summary.length()) {
                     val item = summary.getJSONObject(i)
@@ -97,9 +112,28 @@ private fun BugHunterScreen() {
                         item.optString("total")
                     ))
                 }
-                withContext(Dispatchers.IO) { apiCall("/health", token) }
+                val workspace = JSONObject(payload[3])
+                val scope = workspace.getJSONObject("scope")
+                scopePreview = if (scope.optBoolean("exists")) {
+                    scope.optString("preview")
+                } else {
+                    "No scope.md found. Import a program scope in Termux before recon."
+                }
+                val targetArray = workspace.getJSONArray("approved_targets")
+                val targetList = mutableListOf<ApprovedTarget>()
+                for (i in 0 until targetArray.length()) {
+                    val item = targetArray.getJSONObject(i)
+                    targetList.add(ApprovedTarget(
+                        item.optString("file"), item.optString("target"), item.optString("scope_file")
+                    ))
+                }
                 opportunities = parsed
                 ledger = lines
+                findings = workspaceFiles(workspace, "findings")
+                evidence = workspaceFiles(workspace, "evidence")
+                reports = workspaceFiles(workspace, "reports")
+                approvals = targetList
+                telegramConfigured = workspace.optBoolean("telegram_configured")
                 connected = true
                 status = "Connected to the local Termux engine."
             } catch (error: Exception) {
@@ -125,19 +159,15 @@ private fun BugHunterScreen() {
                             Text("LOCAL ENGINE", style = MaterialTheme.typography.labelLarge)
                             Text(status, style = MaterialTheme.typography.bodyMedium)
                             OutlinedTextField(
-                                value = token,
-                                onValueChange = { token = it },
+                                value = token, onValueChange = { token = it },
                                 label = { Text("Termux API token") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
                             )
                             Button(onClick = { refresh() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (busy) "Connecting…" else "Connect / Refresh")
                             }
-                            Text(
-                                if (connected) "Connected" else "Not connected",
-                                color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                            )
+                            Text(if (connected) "Connected" else "Not connected",
+                                color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -159,21 +189,48 @@ private fun BugHunterScreen() {
                         }
                     }
                 }
+                item { Text("FINDINGS", style = MaterialTheme.typography.titleMedium) }
+                if (findings.isEmpty()) item { Text("No findings files in findings/.") }
+                else items(findings) { Text(it.path + " · " + it.size + " bytes") }
+
+                item { Text("EVIDENCE", style = MaterialTheme.typography.titleMedium) }
+                if (evidence.isEmpty()) item { Text("No evidence files in evidence/.") }
+                else items(evidence) { Text(it.path + " · " + it.size + " bytes") }
+
+                item { Text("REPORT DRAFTS", style = MaterialTheme.typography.titleMedium) }
+                if (reports.isEmpty()) item { Text("No files in reports/ or drafts/.") }
+                else items(reports) { Text(it.path + " · " + it.size + " bytes") }
+
                 item {
-                    Text("BOUNTY LEDGER", style = MaterialTheme.typography.titleMedium)
-                    if (ledger.isEmpty()) Text("No ledger entries yet. Add them with cbh ledger add in Termux.")
+                    Card {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("SCOPE", style = MaterialTheme.typography.titleMedium)
+                            Text(scopePreview, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
-                items(ledger) { line ->
+                item {
+                    Card {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("APPROVED TARGETS", style = MaterialTheme.typography.titleMedium)
+                            if (approvals.isEmpty()) Text("No approval files in targets/approved/.")
+                        }
+                    }
+                }
+                items(approvals) { item ->
+                    Text(item.target + " · " + item.scopeFile + " (" + item.file + ")")
+                }
+                item {
                     Card {
                         Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(line.label)
-                            Text(line.value)
+                            Text("TELEGRAM ALERTS")
+                            Text(if (telegramConfigured) "Configured" else "Not configured")
                         }
                     }
                 }
                 item {
                     Text(
-                        "Safety: the companion connects only to 127.0.0.1. It does not run scans, exploit targets, or submit reports.",
+                        "Safety: the companion connects only to 127.0.0.1. It does not run scans, exploit targets, or submit reports. Configure Telegram with cbh telegram-setup in Termux.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

@@ -42,6 +42,71 @@ def load_or_create_token() -> str:
     return token
 
 
+def _workspace_snapshot():
+    root = Path.cwd().resolve()
+
+    def files_in(folder):
+        base = root / folder
+        result = []
+        if not base.is_dir():
+            return result
+        for path in sorted(base.rglob("*")):
+            try:
+                if not path.is_file() or path.is_symlink():
+                    continue
+                resolved = path.resolve()
+                if root not in resolved.parents:
+                    continue
+                result.append({
+                    "path": resolved.relative_to(root).as_posix(),
+                    "name": path.name,
+                    "size": path.stat().st_size,
+                })
+                if len(result) >= 100:
+                    break
+            except OSError:
+                continue
+        return result
+
+    scope_path = root / "scope.md"
+    scope = {"exists": scope_path.is_file(), "path": "scope.md", "preview": ""}
+    if scope_path.is_file():
+        try:
+            scope["preview"] = scope_path.read_text(encoding="utf-8")[:5000]
+        except (OSError, UnicodeError):
+            scope["preview"] = "[scope file could not be read]"
+
+    approved = []
+    approved_dir = root / "targets" / "approved"
+    if approved_dir.is_dir():
+        for path in sorted(approved_dir.glob("*.json"))[:100]:
+            try:
+                item = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(item, dict):
+                    approved.append({
+                        "file": path.name,
+                        "target": str(item.get("target") or ""),
+                        "scope_file": str(item.get("scope_file") or ""),
+                    })
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                approved.append({"file": path.name, "target": "", "scope_file": ""})
+
+    try:
+        from cbh.telegram import load_config
+        telegram_configured = bool(load_config())
+    except Exception:
+        telegram_configured = False
+
+    return {
+        "findings": files_in("findings"),
+        "evidence": files_in("evidence"),
+        "reports": files_in("reports") + files_in("drafts"),
+        "scope": scope,
+        "approved_targets": approved,
+        "telegram_configured": telegram_configured,
+    }
+
+
 def make_handler(token: str):
     class Handler(BaseHTTPRequestHandler):
         server_version = "CBHLocalAPI/1"
@@ -80,6 +145,8 @@ def make_handler(token: str):
                     "summary": automation.ledger_summary(),
                     "transactions": automation.list_transactions(limit=100),
                 })
+            elif route == "/workspace":
+                self._send(200, _workspace_snapshot())
             else:
                 self._send(404, {"error": "not_found"})
 

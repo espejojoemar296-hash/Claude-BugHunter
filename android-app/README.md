@@ -14,8 +14,6 @@ From the repository root in Termux, start:
 
 At first startup it creates a random API token under ~/.config/claude-bughunter/api-token and prints it once. Keep the Termux session running. Open BugHunter AI, paste the token, and tap Connect / Refresh.
 
-The service binds only to 127.0.0.1:8765; it refuses non-loopback bind addresses. The Android app calls only that loopback address. The API requires a bearer token and exposes opportunity and ledger views. No scan or exploit endpoint is exposed.
+The service binds only to 127.0.0.1:8765; it refuses non-loopback bind addresses. The Android app calls only that loopback address. The API requires a bearer token. It exposes opportunity and ledger data, workspace file names, scope preview, approved-target summaries, and Telegram configuration status. It does not expose a scan or exploit endpoint.
 
-Run the API tests with:
-
-    python -m unittest discover -s tests -p test_api.py -v
+Configure Telegram in Termux with cbh telegram-setup. Run autopilot separately with cbh autopilot; the Android app is a dashboard, not an unattended scanner.
