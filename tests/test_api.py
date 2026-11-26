@@ -160,6 +160,11 @@ class LocalApiTests(unittest.TestCase):
                 "created_at": "2026-11-27T00:00:00Z",
                 "files_scanned": 12, "finding_count": 3,
                 "limitations": ["heuristic only"],
+                "findings": [{
+                    "file": "pkg/example.go", "line": 42, "category": "process_execution",
+                    "risk_score": 71, "priority": "high", "confidence": "medium",
+                    "function": "runCommand", "local_source_to_sink_trace": "input -> exec",
+                }],
             }), encoding="utf-8")
             workspaces = Path(tmp) / "verification" / "cli-v1" / "finding_workspaces"
             workspaces.mkdir(parents=True)
@@ -172,7 +177,9 @@ class LocalApiTests(unittest.TestCase):
 
         self.assertTrue(snapshot["audit_summary"]["available"])
         self.assertEqual(snapshot["audit_summary"]["finding_count"], 3)
-        self.assertEqual(snapshot["audit_candidates"], [])
+        self.assertEqual(snapshot["audit_candidates"][0]["file"], "pkg/example.go")
+        self.assertEqual(snapshot["audit_candidates"][0]["line"], 42)
+        self.assertEqual(snapshot["audit_candidates"][0]["trace"], "input -> exec")
         self.assertEqual(snapshot["verification_status_counts"], {"NOT_TESTED": 1})
 
     def test_api_refuses_non_loopback_binding(self):
