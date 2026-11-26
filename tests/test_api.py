@@ -144,6 +144,36 @@ class LocalApiTests(unittest.TestCase):
                 snapshot = _workspace_snapshot()
             self.assertEqual(snapshot["approved_targets"][0]["scope_preview"], scope.read_text(encoding="utf-8"))
 
+    def test_workspace_includes_external_audit_and_verification_summary(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from cbh.api import _workspace_snapshot
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Claude-BugHunter"
+            root.mkdir()
+            audit = Path(tmp) / "audits" / "cli" / "source-scan-v4.0-report.json"
+            audit.parent.mkdir(parents=True)
+            audit.write_text(json.dumps({
+                "scanner": "test scanner", "version": "4.0",
+                "created_at": "2026-11-27T00:00:00Z",
+                "files_scanned": 12, "finding_count": 3,
+                "limitations": ["heuristic only"],
+            }), encoding="utf-8")
+            workspaces = Path(tmp) / "verification" / "cli-v1" / "finding_workspaces"
+            workspaces.mkdir(parents=True)
+            (workspaces / "finding-0001").mkdir()
+            (workspaces / "finding-0001" / "finding.json").write_text(
+                json.dumps({"verification_status": "NOT_TESTED"}), encoding="utf-8"
+            )
+            with patch("cbh.api.Path.cwd", return_value=root), patch("cbh.api.Path.home", return_value=root):
+                snapshot = _workspace_snapshot()
+
+        self.assertTrue(snapshot["audit_summary"]["available"])
+        self.assertEqual(snapshot["audit_summary"]["finding_count"], 3)
+        self.assertEqual(snapshot["verification_status_counts"], {"NOT_TESTED": 1})
+
     def test_api_refuses_non_loopback_binding(self):
         from cbh.api import serve
         with self.assertRaises(ValueError):
