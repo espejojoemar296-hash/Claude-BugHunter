@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -127,6 +128,7 @@ private fun BugHunterScreen() {
     var connected by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Connect to the Termux engine on this device.") }
     var opportunities by remember { mutableStateOf(listOf<Opportunity>()) }
+    var selectedOpportunity by remember { mutableStateOf<Opportunity?>(null) }
     var ledger by remember { mutableStateOf(listOf<LedgerLine>()) }
     var ledgerAmount by remember { mutableStateOf("") }
     var ledgerCurrency by remember { mutableStateOf("USD") }
@@ -282,7 +284,7 @@ private fun BugHunterScreen() {
             try {
                 withContext(Dispatchers.IO) { apiPost("/opportunities/refresh", token, "{}") }
                 discoveryStatus = "Discovery running…"
-                repeat(90) {
+                for (attempt in 0 until 90) {
                     delay(1000)
                     val job = withContext(Dispatchers.IO) {
                         JSONObject(apiCall("/opportunities/status", token))
@@ -297,9 +299,9 @@ private fun BugHunterScreen() {
                     }
                     if (state == "completed") {
                         completed = true
-                        return@repeat
+                        break
                     }
-                    if (state == "failed") return@repeat
+                    if (state == "failed") break
                 }
                 status = if (completed) "Discovery complete. Program details refreshed." else discoveryStatus
             } catch (error: Exception) {
@@ -410,7 +412,7 @@ private fun BugHunterScreen() {
                                 Text(item.platform + " · " + item.handle)
                                 Text("Score: " + item.score + if (item.reward.isNotBlank()) " · " + item.reward else "")
                                 if (item.url.isNotBlank()) Text(item.url, style = MaterialTheme.typography.bodySmall)
-                                Text(item.details, style = MaterialTheme.typography.bodySmall)
+                                TextButton(onClick = { selectedOpportunity = item }) { Text("View full program details and scope") }
                             }
                         }
                     }
@@ -529,6 +531,23 @@ private fun BugHunterScreen() {
                     )
                 }
             }
+        }
+        selectedOpportunity?.let { selected ->
+            AlertDialog(
+                onDismissRequest = { selectedOpportunity = null },
+                title = { Text(selected.name) },
+                text = {
+                    Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+                        Text(selected.platform + " · " + selected.handle)
+                        if (selected.url.isNotBlank()) Text(selected.url)
+                        Spacer(Modifier.height(8.dp))
+                        Text(selected.details, style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { selectedOpportunity = null }) { Text("Close") }
+                }
+            )
         }
     }
 }
