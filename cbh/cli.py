@@ -1356,6 +1356,7 @@ def cmd_engage(args: argparse.Namespace) -> int:
         result = run_approved_engagement(
             args.config, max_hunts=args.max_hunts, parallel=args.parallel,
             model=args.model, mock=args.mock, expand=args.expand, base=args.base,
+            ai_hunt=args.ai_hunt,
         )
     except (ValueError, RuntimeError, OSError) as exc:
         print(f"[error] {exc}", file=sys.stderr)
@@ -1364,6 +1365,7 @@ def cmd_engage(args: argparse.Namespace) -> int:
     print("=== APPROVED-SCOPE ENGAGEMENT ===")
     print(f"Program: {result['name']}")
     print(f"Run: {result['run_id']}")
+    print(f"Mode: {result.get('mode', 'unknown')}")
     print(f"Mock/offline: {result['mock']}")
     print(f"Summary: {json.dumps(result['summary'], sort_keys=True)}")
     print(f"Engagement folder: {result['engagement_dir']}")
@@ -1463,7 +1465,7 @@ def main() -> int:
     p_hunt.add_argument("--limit", type=int, default=20)
     p_hunt.set_defaults(func=cmd_hunt)
 
-    p_engage = sub.add_parser("engage", help="run full recon/hunt/validate/report on one approved target")
+    p_engage = sub.add_parser("engage", help="run deterministic no-AI recon by default on one approved target")
     p_engage.add_argument("config", help="JSON file in targets/approved/ with target and scope_file")
     p_engage.add_argument("--max-hunts", type=int, default=10)
     p_engage.add_argument("--parallel", type=int, default=2)
@@ -1471,6 +1473,8 @@ def main() -> int:
     p_engage.add_argument("--base", help="engagement state directory")
     p_engage.add_argument("--expand", action="store_true", help="include discovered in-scope subdomains")
     p_engage.add_argument("--mock", action="store_true", help="offline full-pipeline test; never contacts target")
+    p_engage.add_argument("--ai-hunt", action="store_true",
+                          help="opt in to Claude-powered hunt/validation; requires authenticated Claude Code")
     p_engage.set_defaults(func=cmd_engage)
 
     p_validate = sub.add_parser("validate", help="offline scope and evidence checks")
