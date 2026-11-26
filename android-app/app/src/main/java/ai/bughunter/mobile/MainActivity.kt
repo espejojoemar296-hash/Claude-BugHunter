@@ -134,6 +134,7 @@ private fun BugHunterScreen() {
     var status by remember { mutableStateOf("Connect to the Termux engine on this device.") }
     var opportunities by remember { mutableStateOf(listOf<Opportunity>()) }
     var selectedOpportunity by remember { mutableStateOf<Opportunity?>(null) }
+    var selectedProgramName by remember { mutableStateOf("") }
     var ledger by remember { mutableStateOf(listOf<LedgerLine>()) }
     var ledgerAmount by remember { mutableStateOf("") }
     var ledgerCurrency by remember { mutableStateOf("USD") }
@@ -490,7 +491,7 @@ private fun BugHunterScreen() {
             try {
                 val body = JSONObject()
                     .put("mode", "local_only")
-                    .put("program", selectedOpportunity?.name ?: "")
+                    .put("program", selectedProgramName)
                     .toString()
                 withContext(Dispatchers.IO) { apiPost("/assessment/start", token, body) }
                 assessmentRunning = true
@@ -576,6 +577,7 @@ private fun BugHunterScreen() {
                     Card {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("ONE-TAP LOCAL ASSESSMENT", style = MaterialTheme.typography.titleMedium)
+                            Text(if (selectedProgramName.isBlank()) "No bounty program selected. This run scans local files only." else "Selected program: " + selectedProgramName + " · Policy: NOT VERIFIED", style = MaterialTheme.typography.bodySmall)
                             Text(assessmentStatus, style = MaterialTheme.typography.bodySmall)
                             Text("Scans local source and supported documents, runs static checks and offline synthetic impact simulation, saves evidence and a report draft. No target network requests, no live exploit tests, and no automatic submission.",
                                 style = MaterialTheme.typography.bodySmall)
@@ -835,7 +837,14 @@ private fun BugHunterScreen() {
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { selectedOpportunity = null }) { Text("Close") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { selectedOpportunity = null }) { Text("Close") }
+                        TextButton(onClick = {
+                            selectedProgramName = selected.name + " (" + selected.platform + ")"
+                            selectedOpportunity = null
+                            status = "Program selected for local assessment. Verify its live policy manually; network testing remains blocked."
+                        }) { Text("Select Program") }
+                    }
                 }
             )
         }
