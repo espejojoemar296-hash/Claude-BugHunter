@@ -40,6 +40,21 @@ class LocalApiTests(unittest.TestCase):
         payload = json.loads(caught.exception.read().decode("utf-8"))
         self.assertEqual(payload["error"], "not_found")
 
+    def test_engagement_status_requires_token_and_is_available(self):
+        status, payload = self.request("/engagement/status")
+        self.assertEqual(status, 200)
+        self.assertIn(payload["status"], ("idle", "running", "completed", "failed"))
+
+    def test_engagement_run_rejects_path_traversal(self):
+        body = json.dumps({"config": "../outside.json"}).encode("utf-8")
+        req = Request(
+            self.base + "/engagement/run", data=body, method="POST",
+            headers={"Authorization": "Bearer test-secret", "Content-Type": "application/json"},
+        )
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(req, timeout=3)
+        self.assertEqual(caught.exception.code, 400)
+
     def test_api_refuses_non_loopback_binding(self):
         from cbh.api import serve
         with self.assertRaises(ValueError):
