@@ -14,6 +14,36 @@ from cbh import automation
 
 _JOB_LOCK = threading.Lock()
 _JOB = {"status": "idle"}
+_DISCOVERY_LOCK = threading.Lock()
+_DISCOVERY_JOB = {"status": "idle"}
+
+
+def _start_discovery():
+    global _DISCOVERY_JOB
+    with _DISCOVERY_LOCK:
+        if _DISCOVERY_JOB.get("status") == "running":
+            return False
+
+        _DISCOVERY_JOB = {"status": "running"}
+
+    def worker():
+        global _DISCOVERY_JOB
+        try:
+            from cbh.hunt import discover
+            results, warnings = discover(refresh=True, limit=1000)
+            added = automation.record_opportunities(results)
+            with _DISCOVERY_LOCK:
+                _DISCOVERY_JOB = {
+                    "status": "completed", "checked": len(results),
+                    "added": added, "warnings": warnings[:20],
+                }
+        except Exception as exc:
+            with _DISCOVERY_LOCK:
+                _DISCOVERY_JOB = {"status": "failed", "error": str(exc)[:500]}
+
+    thread = threading.Thread(target=worker, name="cbh-discovery", daemon=True)
+    thread.start()
+    return True
 
 
 def _start_engagement(config_name):
@@ -197,6 +227,9 @@ def make_handler(token: str):
                 except (TypeError, ValueError):
                     limit = 50
                 self._send(200, {"opportunities": automation.list_opportunities(limit=limit)})
+            elif route == "/opportunities/status":
+                with _DISCOVERY_LOCK:
+                    self._send(200, dict(_DISCOVERY_JOB))
             elif route == "/ledger":
                 self._send(200, {
                     "summary": automation.ledger_summary(),
@@ -214,6 +247,19 @@ def make_handler(token: str):
             if not self._authorized():
                 return
             route = urlparse(self.path).path
+            if route == "/opportunities/refresh":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length > 1024:
+                        raise ValueError("invalid request size")
+                    started = _start_discovery()
+                    if not started:
+                        self._send(409, {"error": "opportunity discovery is already running"})
+                    else:
+                        self._send(202, {"started": True})
+                except (ValueError, TypeError) as exc:
+                    self._send(400, {"error": str(exc)[:200]})
+                return
             if route == "/engagement/run":
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
