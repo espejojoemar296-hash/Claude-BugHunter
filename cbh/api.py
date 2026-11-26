@@ -419,6 +419,9 @@ def make_handler(token: str):
                     "summary": automation.ledger_summary(),
                     "transactions": automation.list_transactions(limit=100),
                 })
+            elif route == "/payout-settings":
+                from cbh import payout_settings
+                self._send(200, payout_settings.load())
             elif route == "/workspace":
                 self._send(200, _workspace_snapshot())
             elif route == "/engagement/status":
@@ -444,6 +447,22 @@ def make_handler(token: str):
                     else:
                         self._send(202, {"started": True})
                 except (ValueError, TypeError) as exc:
+                    self._send(400, {"error": str(exc)[:200]})
+                return
+            if route == "/payout-settings":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length < 1 or length > 2048:
+                        raise ValueError("invalid request size")
+                    data = json.loads(self.rfile.read(length).decode("utf-8"))
+                    if not isinstance(data, dict):
+                        raise ValueError("JSON body must be an object")
+                    from cbh import payout_settings
+                    saved = payout_settings.save(
+                        data.get("provider", ""), data.get("masked_reference", "")
+                    )
+                    self._send(200, {"saved": True, **saved})
+                except (ValueError, TypeError, UnicodeError, json.JSONDecodeError, OSError) as exc:
                     self._send(400, {"error": str(exc)[:200]})
                 return
             if route == "/targets/approve":
