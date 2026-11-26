@@ -45,12 +45,12 @@ private fun formatOpportunityDetails(item: JSONObject): String {
         "OTHER ASSETS" to "other_assets"
     )
     val out = StringBuilder()
-    out.append("Reward: ").append(item.optString("reward", "Not published")).append("\\n")
-    out.append("Availability: ").append(item.optString("availability", "Unverified")).append("\\n")
-    out.append("Scope source: ").append(details.optString("scope_source")).append("\\n")
+    out.append("Reward: ").append(item.optString("reward", "Not published")).append("\n")
+    out.append("Availability: ").append(item.optString("availability", "Unverified")).append("\n")
+    out.append("Scope source: ").append(details.optString("scope_source")).append("\n")
     for ((label, key) in sections) {
         val array = details.optJSONArray(key) ?: continue
-        out.append("\\n").append(label).append(" (").append(array.length()).append(")\\n")
+        out.append("\n").append(label).append(" (").append(array.length()).append(")\n")
         for (i in 0 until minOf(array.length(), 35)) {
             val asset = array.optJSONObject(i) ?: continue
             out.append("• ").append(asset.optString("asset"))
@@ -60,18 +60,18 @@ private fun formatOpportunityDetails(item: JSONObject): String {
                 out.append("; bounty eligible: ").append(asset.optString("bounty_eligible"))
             }
             if (asset.optString("severity").isNotBlank()) out.append("; severity: ").append(asset.optString("severity"))
-            if (asset.optString("instruction").isNotBlank()) out.append("\\n  ").append(asset.optString("instruction"))
-            if (asset.optString("notes").isNotBlank()) out.append("\\n  Note: ").append(asset.optString("notes"))
-            out.append("\\n")
+            if (asset.optString("instruction").isNotBlank()) out.append("\n  ").append(asset.optString("instruction"))
+            if (asset.optString("notes").isNotBlank()) out.append("\n  Note: ").append(asset.optString("notes"))
+            out.append("\n")
         }
-        if (array.length() > 35) out.append("… ").append(array.length() - 35).append(" more entries omitted here\\n")
+        if (array.length() > 35) out.append("… ").append(array.length() - 35).append(" more entries omitted here\n")
     }
     val conduct = details.optJSONArray("conduct")
     if (conduct != null && conduct.length() > 0) {
-        out.append("\\nPROGRAM RULES / CONDUCT\\n")
-        for (i in 0 until minOf(conduct.length(), 20)) out.append("• ").append(conduct.optString(i)).append("\\n")
+        out.append("\nPROGRAM RULES / CONDUCT\n")
+        for (i in 0 until minOf(conduct.length(), 20)) out.append("• ").append(conduct.optString(i)).append("\n")
     }
-    out.append("\\nAlways re-check the live program policy. Scope can change; ambiguous assets are not approved for testing.")
+    out.append("\nAlways re-check the live program policy. Scope can change; ambiguous assets are not approved for testing.")
     return out.toString()
 }
 
