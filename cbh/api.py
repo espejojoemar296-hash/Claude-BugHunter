@@ -5,11 +5,44 @@ import hmac
 import json
 import os
 import secrets
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 from cbh import automation
+
+_JOB_LOCK = threading.Lock()
+_JOB = {"status": "idle"}
+
+
+def _start_engagement(config_name):
+    global _JOB
+    if not isinstance(config_name, str) or not config_name or Path(config_name).name != config_name or not config_name.endswith(".json"):
+        raise ValueError("config must be the filename of an approved .json file")
+    approved_root = (Path.cwd() / "targets" / "approved").resolve()
+    config_path = (approved_root / config_name).resolve()
+    if config_path.parent != approved_root or not config_path.is_file():
+        raise ValueError("approved target config was not found")
+    with _JOB_LOCK:
+        if _JOB.get("status") == "running":
+            return False
+        _JOB = {"status": "running", "config": config_name}
+
+    def worker():
+        global _JOB
+        try:
+            from cbh.engagement import run_approved_engagement
+            result = run_approved_engagement(config_path)
+            with _JOB_LOCK:
+                _JOB = {"status": "completed", "config": config_name, "result": result}
+        except Exception as exc:
+            with _JOB_LOCK:
+                _JOB = {"status": "failed", "config": config_name, "error": str(exc)[:500]}
+
+    thread = threading.Thread(target=worker, name="cbh-engagement", daemon=True)
+    thread.start()
+    return True
 
 
 def token_path() -> Path:
@@ -147,13 +180,33 @@ def make_handler(token: str):
                 })
             elif route == "/workspace":
                 self._send(200, _workspace_snapshot())
+            elif route == "/engagement/status":
+                with _JOB_LOCK:
+                    self._send(200, dict(_JOB))
             else:
                 self._send(404, {"error": "not_found"})
 
         def do_POST(self):
             if not self._authorized():
                 return
-            if urlparse(self.path).path != "/ledger":
+            route = urlparse(self.path).path
+            if route == "/engagement/run":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length < 1 or length > 8192:
+                        raise ValueError("invalid request size")
+                    data = json.loads(self.rfile.read(length).decode("utf-8"))
+                    if not isinstance(data, dict):
+                        raise ValueError("JSON body must be an object")
+                    started = _start_engagement(data.get("config"))
+                    if not started:
+                        self._send(409, {"error": "an engagement is already running"})
+                    else:
+                        self._send(202, {"started": True, "config": data.get("config")})
+                except (ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
+                    self._send(400, {"error": str(exc)[:200]})
+                return
+            if route != "/ledger":
                 self._send(404, {"error": "not_found"})
                 return
             try:
