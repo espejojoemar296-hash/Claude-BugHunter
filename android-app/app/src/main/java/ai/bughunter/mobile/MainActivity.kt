@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -26,11 +27,51 @@ class MainActivity : ComponentActivity() {
 
 private data class Opportunity(
     val name: String, val platform: String, val handle: String,
-    val reward: String, val url: String, val score: Int
+    val reward: String, val url: String, val score: Int, val details: String
 )
 private data class LedgerLine(val label: String, val value: String)
 private data class WorkspaceFile(val path: String, val size: Int)
 private data class ApprovedTarget(val file: String, val target: String, val scopeFile: String, val scopePreview: String)
+
+
+private fun formatOpportunityDetails(item: JSONObject): String {
+    val details = item.optJSONObject("details") ?: return "Published scope details are not available in the local cache. Open the program page and verify scope before testing."
+    val sections = listOf(
+        "IN SCOPE" to "in_scope",
+        "OUT OF SCOPE" to "out_of_scope",
+        "NEEDS MANUAL REVIEW" to "needs_review",
+        "OTHER ASSETS" to "other_assets"
+    )
+    val out = StringBuilder()
+    out.append("Reward: ").append(item.optString("reward", "Not published")).append("\\n")
+    out.append("Availability: ").append(item.optString("availability", "Unverified")).append("\\n")
+    out.append("Scope source: ").append(details.optString("scope_source")).append("\\n")
+    for ((label, key) in sections) {
+        val array = details.optJSONArray(key) ?: continue
+        out.append("\\n").append(label).append(" (").append(array.length()).append(")\\n")
+        for (i in 0 until minOf(array.length(), 35)) {
+            val asset = array.optJSONObject(i) ?: continue
+            out.append("• ").append(asset.optString("asset"))
+            if (asset.optString("type").isNotBlank()) out.append(" [").append(asset.optString("type")).append("]")
+            if (asset.optString("status").isNotBlank()) out.append(" — ").append(asset.optString("status"))
+            if (asset.has("bounty_eligible") && !asset.isNull("bounty_eligible")) {
+                out.append("; bounty eligible: ").append(asset.optString("bounty_eligible"))
+            }
+            if (asset.optString("severity").isNotBlank()) out.append("; severity: ").append(asset.optString("severity"))
+            if (asset.optString("instruction").isNotBlank()) out.append("\\n  ").append(asset.optString("instruction"))
+            if (asset.optString("notes").isNotBlank()) out.append("\\n  Note: ").append(asset.optString("notes"))
+            out.append("\\n")
+        }
+        if (array.length() > 35) out.append("… ").append(array.length() - 35).append(" more entries omitted here\\n")
+    }
+    val conduct = details.optJSONArray("conduct")
+    if (conduct != null && conduct.length() > 0) {
+        out.append("\\nPROGRAM RULES / CONDUCT\\n")
+        for (i in 0 until minOf(conduct.length(), 20)) out.append("• ").append(conduct.optString(i)).append("\\n")
+    }
+    out.append("\\nAlways re-check the live program policy. Scope can change; ambiguous assets are not approved for testing.")
+    return out.toString()
+}
 
 private fun apiCall(path: String, token: String): String {
     val connection = URL("http://127.0.0.1:8765" + path).openConnection() as HttpURLConnection
@@ -102,6 +143,42 @@ private fun BugHunterScreen() {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(connected, token) {
+        if (connected && token.isNotBlank()) {
+            while (true) {
+                delay(30000)
+                try {
+                    val payload = withContext(Dispatchers.IO) {
+                        JSONObject(apiCall("/opportunities?limit=100", token))
+                    }
+                    val list = payload.getJSONArray("opportunities")
+                    val parsed = mutableListOf<Opportunity>()
+                    for (i in 0 until list.length()) {
+                        val item = list.getJSONObject(i)
+                        parsed.add(Opportunity(
+                            item.optString("name", item.optString("handle")),
+                            item.optString("platform"), item.optString("handle"),
+                            item.optString("reward"), item.optString("url"), item.optInt("score"),
+                            formatOpportunityDetails(item)
+                        ))
+                    }
+                    opportunities = parsed
+                    val job = withContext(Dispatchers.IO) {
+                        JSONObject(apiCall("/opportunities/status", token))
+                    }
+                    discoveryStatus = when (job.optString("status")) {
+                        "running" -> "Discovery running…"
+                        "completed" -> "Checked " + job.optInt("checked") + " programs; " + job.optInt("added") + " new."
+                        "failed" -> "Discovery failed: " + job.optString("error")
+                        else -> discoveryStatus
+                    }
+                } catch (_: Exception) {
+                    // Keep the last successful snapshot visible during a temporary API interruption.
+                }
+            }
+        }
+    }
+
     fun refresh() {
         if (token.isBlank()) {
             status = "Paste the API token printed by python -m cbh.api in Termux."
@@ -127,7 +204,8 @@ private fun BugHunterScreen() {
                     parsed.add(Opportunity(
                         item.optString("name", item.optString("handle")),
                         item.optString("platform"), item.optString("handle"),
-                        item.optString("reward"), item.optString("url"), item.optInt("score")
+                        item.optString("reward"), item.optString("url"), item.optInt("score"),
+                        formatOpportunityDetails(item)
                     ))
                 }
                 val ledgerJson = JSONObject(payload[2])
@@ -200,17 +278,36 @@ private fun BugHunterScreen() {
         }
         busy = true
         scope.launch {
+            var completed = false
             try {
-                val response = withContext(Dispatchers.IO) {
-                    apiPost("/opportunities/refresh", token, "{}")
+                withContext(Dispatchers.IO) { apiPost("/opportunities/refresh", token, "{}") }
+                discoveryStatus = "Discovery running…"
+                repeat(90) {
+                    delay(1000)
+                    val job = withContext(Dispatchers.IO) {
+                        JSONObject(apiCall("/opportunities/status", token))
+                    }
+                    val state = job.optString("status")
+                    discoveryStatus = when (state) {
+                        "running" -> "Discovery running…"
+                        "completed" -> "Checked " + job.optInt("checked") + " programs; " +
+                            job.optInt("added") + " new programs saved."
+                        "failed" -> "Discovery failed: " + job.optString("error")
+                        else -> "Waiting for discovery…"
+                    }
+                    if (state == "completed") {
+                        completed = true
+                        return@repeat
+                    }
+                    if (state == "failed") return@repeat
                 }
-                discoveryStatus = "Discovery started. Refresh shortly for results."
-                status = response
+                status = if (completed) "Discovery complete. Program details refreshed." else discoveryStatus
             } catch (error: Exception) {
-                status = error.message ?: "Could not start bounty discovery."
+                status = error.message ?: "Could not complete bounty discovery."
             } finally {
                 busy = false
             }
+            if (completed) refresh()
         }
     }
 
@@ -313,6 +410,7 @@ private fun BugHunterScreen() {
                                 Text(item.platform + " · " + item.handle)
                                 Text("Score: " + item.score + if (item.reward.isNotBlank()) " · " + item.reward else "")
                                 if (item.url.isNotBlank()) Text(item.url, style = MaterialTheme.typography.bodySmall)
+                                Text(item.details, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
