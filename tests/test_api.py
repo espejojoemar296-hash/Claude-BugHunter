@@ -182,6 +182,32 @@ class LocalApiTests(unittest.TestCase):
         self.assertEqual(snapshot["audit_candidates"][0]["trace"], "input -> exec")
         self.assertEqual(snapshot["verification_status_counts"], {"NOT_TESTED": 1})
 
+    def test_target_approval_requires_matching_reviewed_scope(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from cbh.api import _approve_target
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            scopes = root / "scopes"
+            scopes.mkdir(parents=True)
+            (scopes / "demo.md").write_text(
+                "# Scope - Demo\\n\\n## In scope\\n- app.example.test\\n"
+                "\\n## Out of scope\\n- admin.example.test\\n",
+                encoding="utf-8",
+            )
+            with patch("cbh.api.Path.cwd", return_value=root):
+                result = _approve_target("app.example.test", "scopes/demo.md")
+                self.assertEqual(result["target"], "app.example.test")
+                config_path = root / "targets" / "approved" / result["file"]
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                self.assertEqual(config["scope_file"], "../../scopes/demo.md")
+                with self.assertRaisesRegex(ValueError, "target rejected by scope"):
+                    _approve_target("admin.example.test", "scopes/demo.md")
+                with self.assertRaisesRegex(ValueError, "safe relative"):
+                    _approve_target("evil.example.test", "../scope.md")
+
     def test_api_refuses_non_loopback_binding(self):
         from cbh.api import serve
         with self.assertRaises(ValueError):
