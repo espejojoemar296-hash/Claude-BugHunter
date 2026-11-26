@@ -336,6 +336,13 @@ def cmd_recon(args: argparse.Namespace) -> int:
     for warning in getattr(scope, "warnings", []):
         say(f"[scope warning] {warning}")
 
+    # Fail closed: the root target itself must be explicitly authorized.
+    # Do this before creating output or making any network-related calls.
+    reason = scope.reject_reason(target)
+    if reason:
+        print(f"[error] recon target is out of scope: {reason}", file=sys.stderr)
+        return 1
+
     # Clone mode writes under the repo; installed mode writes under the CWD
     # (never into site-packages). Override with --out.
     recon_root = Path(args.out).resolve() if getattr(args, "out", None) \

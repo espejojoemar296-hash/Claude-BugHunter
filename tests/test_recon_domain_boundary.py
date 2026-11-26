@@ -57,7 +57,7 @@ class ReconDomainBoundaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             scope_file = self.make_scope(scratch, ["re:^api\\.example\\.test$"])
             args = argparse.Namespace(
-                target="example.test", out=str(Path(scratch) / "out"),
+                target="api.example.test", out=str(Path(scratch) / "out"),
                 scope_file=scope_file, proxy=None, burp=False,
             )
             with patch.object(cli, "configure_proxy_from_args"), redirect_stdout(io.StringIO()):
@@ -83,6 +83,27 @@ class ReconDomainBoundaryTests(unittest.TestCase):
                 with redirect_stderr(io.StringIO()):
                     self.assertEqual(cli.cmd_recon(args), 1)
             lookup.assert_not_called()
+            self.assertFalse(Path(args.out).exists())
+
+    def test_out_of_scope_root_stops_before_passive_lookup_and_output(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            scope_file = self.make_scope(scratch, ["example.test"])
+            args = argparse.Namespace(
+                target="outside.test", out=str(Path(scratch) / "out"),
+                scope_file=scope_file, proxy=None, burp=False,
+            )
+            with patch.object(cli, "configure_proxy_from_args"):
+                with patch.object(cli, "recon_subdomains_via_crtsh") as crtsh:
+                    with patch.object(cli, "recon_subdomains_via_subfinder") as subfinder:
+                        with patch.object(cli, "recon_resolve") as resolve:
+                            with patch.object(cli, "recon_http_probe") as probe:
+                                with redirect_stderr(io.StringIO()):
+                                    self.assertEqual(cli.cmd_recon(args), 1)
+
+            crtsh.assert_not_called()
+            subfinder.assert_not_called()
+            resolve.assert_not_called()
+            probe.assert_not_called()
             self.assertFalse(Path(args.out).exists())
 
     def test_url_and_path_targets_stop_before_passive_lookup(self):
