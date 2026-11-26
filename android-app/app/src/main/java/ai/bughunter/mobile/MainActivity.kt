@@ -87,6 +87,11 @@ private fun BugHunterScreen() {
     var status by remember { mutableStateOf("Connect to the Termux engine on this device.") }
     var opportunities by remember { mutableStateOf(listOf<Opportunity>()) }
     var ledger by remember { mutableStateOf(listOf<LedgerLine>()) }
+    var ledgerAmount by remember { mutableStateOf("") }
+    var ledgerCurrency by remember { mutableStateOf("USD") }
+    var ledgerNote by remember { mutableStateOf("") }
+    var ledgerProgram by remember { mutableStateOf("") }
+    var discoveryStatus by remember { mutableStateOf("No discovery run yet.") }
     var findings by remember { mutableStateOf(listOf<WorkspaceFile>()) }
     var evidence by remember { mutableStateOf(listOf<WorkspaceFile>()) }
     var reports by remember { mutableStateOf(listOf<WorkspaceFile>()) }
@@ -111,7 +116,8 @@ private fun BugHunterScreen() {
                         apiCall("/opportunities?limit=100", token),
                         apiCall("/ledger", token),
                         apiCall("/workspace", token),
-                        apiCall("/engagement/status", token)
+                        apiCall("/engagement/status", token),
+                        apiCall("/opportunities/status", token)
                     )
                 }
                 val list = JSONObject(payload[1]).getJSONArray("opportunities")
@@ -150,6 +156,14 @@ private fun BugHunterScreen() {
                         item.optString("scope_preview")
                     ))
                 }
+                val discovery = JSONObject(payload[5])
+                discoveryStatus = when (discovery.optString("status")) {
+                    "running" -> "Discovery is running…"
+                    "completed" -> "Checked " + discovery.optInt("checked") +
+                        " programs; " + discovery.optInt("added") + " new."
+                    "failed" -> "Discovery failed: " + discovery.optString("error")
+                    else -> "No discovery run yet."
+                }
                 opportunities = parsed
                 ledger = lines
                 findings = workspaceFiles(workspace, "findings")
@@ -176,6 +190,58 @@ private fun BugHunterScreen() {
             } finally {
                 busy = false
             }
+        }
+    }
+
+    fun startDiscovery() {
+        if (token.isBlank()) {
+            status = "Connect to the Termux engine first."
+            return
+        }
+        busy = true
+        scope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    apiPost("/opportunities/refresh", token, "{}")
+                }
+                discoveryStatus = "Discovery started. Refresh shortly for results."
+                status = response
+            } catch (error: Exception) {
+                status = error.message ?: "Could not start bounty discovery."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun recordTransaction(kind: String) {
+        val amount = ledgerAmount.toDoubleOrNull()
+        if (amount == null || amount <= 0.0 || !amount.isFinite()) {
+            status = "Enter a valid positive amount."
+            return
+        }
+        busy = true
+        scope.launch {
+            var shouldRefresh = false
+            try {
+                val body = JSONObject()
+                    .put("kind", kind)
+                    .put("amount", amount)
+                    .put("currency", ledgerCurrency.trim().ifBlank { "USD" })
+                    .put("note", ledgerNote)
+                    .put("program", ledgerProgram)
+                    .toString()
+                withContext(Dispatchers.IO) { apiPost("/ledger", token, body) }
+                ledgerAmount = ""
+                ledgerNote = ""
+                status = if (kind == "income") "Bounty income recorded." else "Expense recorded."
+                shouldRefresh = true
+            } catch (error: Exception) {
+                status = error.message ?: "Could not save ledger entry."
+            } finally {
+                busy = false
+            }
+            if (shouldRefresh) refresh()
         }
     }
 
@@ -230,6 +296,12 @@ private fun BugHunterScreen() {
                 item {
                     Text("BOUNTY OPPORTUNITIES", style = MaterialTheme.typography.titleMedium)
                     Text(opportunities.size.toString() + " saved opportunities")
+                    Text(discoveryStatus, style = MaterialTheme.typography.bodySmall)
+                    Button(
+                        onClick = { startDiscovery() },
+                        enabled = connected && !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Discover / refresh bounty programs") }
                 }
                 if (opportunities.isEmpty()) {
                     item { Text("No saved opportunities yet. Run cbh hunt or cbh autopilot --once in Termux.") }
@@ -245,6 +317,52 @@ private fun BugHunterScreen() {
                         }
                     }
                 }
+                item {
+                    Card {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("BOUNTY INCOME & EXPENSES", style = MaterialTheme.typography.titleMedium)
+                            if (ledger.isEmpty()) {
+                                Text("No ledger entries recorded yet.", style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                ledger.forEach { line ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(line.label)
+                                        Text(line.value, style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = ledgerAmount, onValueChange = { ledgerAmount = it },
+                                label = { Text("Amount") }, modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = ledgerCurrency, onValueChange = { ledgerCurrency = it },
+                                label = { Text("Currency (e.g. USD, PHP)") }, modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = ledgerProgram, onValueChange = { ledgerProgram = it },
+                                label = { Text("Program (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = ledgerNote, onValueChange = { ledgerNote = it },
+                                label = { Text("Note (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { recordTransaction("income") },
+                                    enabled = connected && !busy,
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Record income") }
+                                OutlinedButton(
+                                    onClick = { recordTransaction("expense") },
+                                    enabled = connected && !busy,
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Record expense") }
+                            }
+                        }
+                    }
+                }
+
                 item { Text("FINDINGS", style = MaterialTheme.typography.titleMedium) }
                 if (findings.isEmpty()) item { Text("No findings files in findings/.") }
                 else items(findings) { Text(it.path + " · " + it.size + " bytes") }
