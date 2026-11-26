@@ -139,6 +139,8 @@ private fun BugHunterScreen() {
     var ledgerCurrency by remember { mutableStateOf("USD") }
     var ledgerNote by remember { mutableStateOf("") }
     var ledgerProgram by remember { mutableStateOf("") }
+    var payoutProvider by remember { mutableStateOf("") }
+    var payoutMaskedReference by remember { mutableStateOf("") }
     var targetInput by remember { mutableStateOf("") }
     var scopeFileInput by remember { mutableStateOf("") }
     var discoveryStatus by remember { mutableStateOf("No discovery run yet.") }
@@ -410,6 +412,28 @@ private fun BugHunterScreen() {
         }
     }
 
+    fun savePayoutPreference() {
+        if (payoutProvider.isBlank()) {
+            status = "Enter a payout provider name."
+            return
+        }
+        busy = true
+        scope.launch {
+            try {
+                val body = JSONObject()
+                    .put("provider", payoutProvider.trim())
+                    .put("masked_reference", payoutMaskedReference.trim())
+                    .toString()
+                withContext(Dispatchers.IO) { apiPost("/payout-settings", token, body) }
+                status = "Payout preference saved locally. Only a masked reference is stored."
+            } catch (error: Exception) {
+                status = error.message ?: "Could not save payout preference."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     fun approveTarget() {
         if (token.isBlank()) {
             status = "Connect to the Termux engine first."
@@ -549,6 +573,24 @@ private fun BugHunterScreen() {
                     Card {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("BOUNTY INCOME & EXPENSES", style = MaterialTheme.typography.titleMedium)
+                            Text("PAYOUT PREFERENCE (OPTIONAL)", style = MaterialTheme.typography.titleSmall)
+                            Text("Store only a provider label and masked reference. Never enter passwords, full account numbers, card details, PINs or recovery phrases.", style = MaterialTheme.typography.bodySmall)
+                            OutlinedTextField(
+                                value = payoutProvider, onValueChange = { payoutProvider = it },
+                                label = { Text("Provider (PayPal, GCash, Maya, bank transfer, Other)") },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = payoutMaskedReference, onValueChange = { payoutMaskedReference = it },
+                                label = { Text("Masked reference (e.g. ••••1234)") },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                            OutlinedButton(
+                                onClick = { savePayoutPreference() },
+                                enabled = connected && !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Save payout preference") }
+                            Divider()
                             if (ledger.isEmpty()) {
                                 Text("No ledger entries recorded yet.", style = MaterialTheme.typography.bodySmall)
                             } else {
