@@ -49,6 +49,26 @@ private fun apiCall(path: String, token: String): String {
     }
 }
 
+private fun apiPost(path: String, token: String, body: String): String {
+    val connection = URL("http://127.0.0.1:8765" + path).openConnection() as HttpURLConnection
+    connection.requestMethod = "POST"
+    connection.connectTimeout = 3500
+    connection.readTimeout = 5000
+    connection.doOutput = true
+    connection.setRequestProperty("Authorization", "Bearer " + token)
+    connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+    return try {
+        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val response = stream.bufferedReader().use { it.readText() }
+        if (code !in 200..299) throw IllegalStateException("API returned HTTP " + code + ": " + response)
+        response
+    } finally {
+        connection.disconnect()
+    }
+}
+
 private fun workspaceFiles(json: JSONObject, key: String): List<WorkspaceFile> {
     val array = json.getJSONArray(key)
     val result = mutableListOf<WorkspaceFile>()
@@ -73,6 +93,7 @@ private fun BugHunterScreen() {
     var approvals by remember { mutableStateOf(listOf<ApprovedTarget>()) }
     var scopePreview by remember { mutableStateOf("No scope.md found in the project folder.") }
     var telegramConfigured by remember { mutableStateOf(false) }
+    var engagementStatus by remember { mutableStateOf("No engagement has been run.") }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -89,7 +110,8 @@ private fun BugHunterScreen() {
                         apiCall("/health", token),
                         apiCall("/opportunities?limit=100", token),
                         apiCall("/ledger", token),
-                        apiCall("/workspace", token)
+                        apiCall("/workspace", token),
+                        apiCall("/engagement/status", token)
                     )
                 }
                 val list = JSONObject(payload[1]).getJSONArray("opportunities")
@@ -134,11 +156,40 @@ private fun BugHunterScreen() {
                 reports = workspaceFiles(workspace, "reports")
                 approvals = targetList
                 telegramConfigured = workspace.optBoolean("telegram_configured")
+                val job = JSONObject(payload[4])
+                engagementStatus = when (job.optString("status")) {
+                    "running" -> "Running: " + job.optString("config")
+                    "completed" -> "Completed: " + job.optString("config") + " · " + job.optString("result")
+                    "failed" -> "Failed: " + job.optString("error")
+                    else -> "Idle"
+                }
                 connected = true
                 status = "Connected to the local Termux engine."
             } catch (error: Exception) {
                 connected = false
                 status = error.message ?: "Could not connect. Check that the Termux API is running."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun startEngagement(configFile: String) {
+        if (token.isBlank()) {
+            status = "Connect to the Termux engine first."
+            return
+        }
+        busy = true
+        scope.launch {
+            try {
+                val body = JSONObject().put("config", configFile).toString()
+                val response = withContext(Dispatchers.IO) {
+                    apiPost("/engagement/run", token, body)
+                }
+                engagementStatus = "Started: " + configFile
+                status = response
+            } catch (error: Exception) {
+                status = error.message ?: "Could not start engagement."
             } finally {
                 busy = false
             }
@@ -212,13 +263,29 @@ private fun BugHunterScreen() {
                 item {
                     Card {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("APPROVED TARGETS", style = MaterialTheme.typography.titleMedium)
-                            if (approvals.isEmpty()) Text("No approval files in targets/approved/.")
+                            Text("ENGAGEMENT STATUS", style = MaterialTheme.typography.titleMedium)
+                            Text(engagementStatus, style = MaterialTheme.typography.bodySmall)
+                            Text("Runs recon, AI-assisted hunting, validation and report drafting. Read-only by default; no automatic report submission.",
+                                style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
+                item {
+                    Text("APPROVED TARGETS", style = MaterialTheme.typography.titleMedium)
+                    if (approvals.isEmpty()) Text("No approval files in targets/approved/.")
+                }
                 items(approvals) { item ->
-                    Text(item.target + " · " + item.scopeFile + " (" + item.file + ")")
+                    Card {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(item.target, style = MaterialTheme.typography.titleSmall)
+                            Text(item.scopeFile + " · " + item.file, style = MaterialTheme.typography.bodySmall)
+                            Button(
+                                onClick = { startEngagement(item.file) },
+                                enabled = connected && !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Start read-only hunt") }
+                        }
+                    }
                 }
                 item {
                     Card {
