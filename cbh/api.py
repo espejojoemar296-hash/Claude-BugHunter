@@ -9,7 +9,7 @@ import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlsplit
 
 from cbh import automation
 
@@ -57,9 +57,22 @@ def _approve_target(target, scope_file, name=""):
     if relative.is_absolute() or ".." in relative.parts or relative.suffix.lower() != ".md":
         raise ValueError("scope_file must be a safe relative .md path inside the repository")
 
+    target_value = target.strip()
+    parsed_target = urlsplit(target_value if "://" in target_value else "https://" + target_value)
+    try:
+        parsed_target.port
+    except ValueError:
+        raise ValueError("target URL has an invalid port")
+    if (parsed_target.scheme.lower() not in ("http", "https") or not parsed_target.hostname
+            or parsed_target.username or parsed_target.password):
+        raise ValueError("target must be a valid HTTP(S) host or URL")
+
     root = Path.cwd().resolve()
-    scope_path = (root / relative).resolve()
-    if root not in scope_path.parents or scope_path.is_symlink() or not scope_path.is_file():
+    scope_candidate = root / relative
+    if scope_candidate.is_symlink():
+        raise ValueError("scope file must not be a symbolic link")
+    scope_path = scope_candidate.resolve()
+    if root not in scope_path.parents or not scope_path.is_file():
         raise ValueError("reviewed scope file was not found inside the repository")
 
     engine_dir = Path(__file__).resolve().parent.parent / "engine"
