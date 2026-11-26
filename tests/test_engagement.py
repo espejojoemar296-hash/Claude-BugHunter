@@ -53,6 +53,11 @@ class ApprovedEngagementTests(unittest.TestCase):
             report = Path(result["report"])
             self.assertTrue(report.is_file())
             self.assertIn("Engagement report", report.read_text(encoding="utf-8"))
+            drafts = report.parent / "submission-drafts"
+            self.assertTrue((drafts / "finding-01-h1.md").is_file())
+            self.assertTrue((drafts / "finding-01-bugcrowd.md").is_file())
+            self.assertTrue((drafts / "finding-01-intigriti.md").is_file())
+            self.assertIn("Steps to reproduce", (drafts / "finding-01-h1.md").read_text(encoding="utf-8"))
             self.assertTrue(result["mock"])
 
 
