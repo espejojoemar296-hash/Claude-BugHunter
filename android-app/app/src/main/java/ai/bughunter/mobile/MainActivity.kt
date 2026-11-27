@@ -51,7 +51,21 @@ private fun formatOpportunityDetails(item: JSONObject): String {
     val out = StringBuilder()
     out.append("Reward: ").append(item.optString("reward", "Not published")).append("\n")
     out.append("Availability: ").append(item.optString("availability", "Unverified")).append("\n")
-    out.append("Scope source: ").append(details.optString("scope_source")).append("\n")
+    out.append("Scope source: ").append(details.optString("scope_source")).append("\\n")
+    val cache = details.optJSONObject("scope_cache")
+    if (cache != null) {
+        val cacheStatus = cache.optString("status", "unknown")
+        val ageSeconds = cache.optLong("age_seconds", -1L)
+        val ageLabel = if (ageSeconds < 0L) "unknown age" else if (ageSeconds < 3600L) {
+            (ageSeconds / 60L).toString() + " minutes old"
+        } else {
+            (ageSeconds / 3600L).toString() + " hours old"
+        }
+        out.append("Scope cache: ").append(cacheStatus).append(" · ").append(ageLabel).append("\\n")
+        if (cache.optString("warning").isNotBlank()) {
+            out.append("Cache warning: ").append(cache.optString("warning")).append("\\n")
+        }
+    }
     for ((label, key) in sections) {
         val array = details.optJSONArray(key) ?: continue
         out.append("\n").append(label).append(" (").append(array.length()).append(")\n")
@@ -77,6 +91,17 @@ private fun formatOpportunityDetails(item: JSONObject): String {
     }
     out.append("\nAlways re-check the live program policy. Scope can change; ambiguous assets are not approved for testing.")
     return out.toString()
+}
+
+private fun discoveryJobSummary(job: JSONObject): String {
+    val summary = "Checked " + job.optInt("checked") + " programs; " +
+        job.optInt("added") + " new programs saved."
+    val warnings = job.optJSONArray("warnings")
+    if (warnings == null || warnings.length() == 0) return summary
+    val warningText = (0 until minOf(warnings.length(), 3)).joinToString(" · ") {
+        warnings.optString(it)
+    }
+    return summary + " Warning: " + warningText
 }
 
 private fun apiCall(path: String, token: String): String {
@@ -185,7 +210,7 @@ private fun BugHunterScreen() {
                     }
                     discoveryStatus = when (job.optString("status")) {
                         "running" -> "Discovery running…"
-                        "completed" -> "Checked " + job.optInt("checked") + " programs; " + job.optInt("added") + " new."
+                        "completed" -> discoveryJobSummary(job)
                         "failed" -> "Discovery failed: " + job.optString("error")
                         else -> discoveryStatus
                     }
@@ -279,8 +304,7 @@ private fun BugHunterScreen() {
                 val discovery = JSONObject(payload[5])
                 discoveryStatus = when (discovery.optString("status")) {
                     "running" -> "Discovery is running…"
-                    "completed" -> "Checked " + discovery.optInt("checked") +
-                        " programs; " + discovery.optInt("added") + " new."
+                    "completed" -> discoveryJobSummary(discovery)
                     "failed" -> "Discovery failed: " + discovery.optString("error")
                     else -> "No discovery run yet."
                 }
@@ -373,8 +397,7 @@ private fun BugHunterScreen() {
                     val state = job.optString("status")
                     discoveryStatus = when (state) {
                         "running" -> "Discovery running…"
-                        "completed" -> "Checked " + job.optInt("checked") + " programs; " +
-                            job.optInt("added") + " new programs saved."
+                        "completed" -> discoveryJobSummary(job)
                         "failed" -> "Discovery failed: " + job.optString("error")
                         else -> "Waiting for discovery…"
                     }
