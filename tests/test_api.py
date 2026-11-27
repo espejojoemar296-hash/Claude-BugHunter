@@ -84,7 +84,8 @@ class LocalApiTests(unittest.TestCase):
         )
         program = SimpleNamespace(entries=[entry], conduct=["No denial of service"])
         with patch("cbh.automation.list_opportunities", return_value=rows):
-            with patch("cbh.scope_import.load_platform", return_value=([record], "cache")):
+            # _opportunity_details reads the cache file mtime for freshness metadata.
+            with patch("cbh.scope_import.load_platform", return_value=([record], __file__)):
                 with patch("cbh.scope_import._record_handle", return_value="demo"):
                     with patch("cbh.scope_import.program_from_record", return_value=program):
                         from cbh.api import _opportunity_details
