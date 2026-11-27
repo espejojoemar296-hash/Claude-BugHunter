@@ -10,7 +10,7 @@ on:
       - "pyproject.toml"
       - ".github/workflows/runtime-tests.yml"
   push:
-    branches: [main]
+    branches: [main, "bughunterai/**"]
     paths:
       - "engine/**"
       - "cbh/**"
