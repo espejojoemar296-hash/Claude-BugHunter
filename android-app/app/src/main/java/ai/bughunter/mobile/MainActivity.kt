@@ -37,8 +37,27 @@ private data class AuditFinding(
     val file: String, val line: Int, val category: String, val risk: Int,
     val priority: String, val confidence: String, val function: String, val trace: String
 )
+private data class LocalAssessmentFinding(
+    val path: String, val line: Int, val category: String, val priority: String,
+    val risk: Int, val status: String, val snippet: String, val guidance: String
+)
 private data class ApprovedTarget(val file: String, val target: String, val scopeFile: String, val scopePreview: String)
 
+
+private fun parseLocalAssessmentFindings(job: JSONObject): List<LocalAssessmentFinding> {
+    val array = job.optJSONArray("findings") ?: return emptyList()
+    val result = mutableListOf<LocalAssessmentFinding>()
+    for (i in 0 until minOf(array.length(), 1000)) {
+        val item = array.optJSONObject(i) ?: continue
+        result.add(LocalAssessmentFinding(
+            item.optString("path"), item.optInt("line"), item.optString("category"),
+            item.optString("priority", "UNRANKED"), item.optInt("risk_score"),
+            item.optString("status", "CANDIDATE_NOT_CONFIRMED"),
+            item.optString("snippet"), item.optString("guidance")
+        ))
+    }
+    return result
+}
 
 private fun formatOpportunityDetails(item: JSONObject): String {
     val details = item.optJSONObject("details") ?: return "Published scope details are not available in the local cache. Open the program page and verify scope before testing."
@@ -182,6 +201,7 @@ private fun BugHunterScreen() {
     var auditSummary by remember { mutableStateOf("No source audit report found.") }
     var verificationSummary by remember { mutableStateOf("No verification workspaces found.") }
     var auditCandidates by remember { mutableStateOf(listOf<AuditFinding>()) }
+    var localAssessmentFindings by remember { mutableStateOf(listOf<LocalAssessmentFinding>()) }
     val sections = listOf("Dashboard", "Programs", "Workspace", "Findings", "Verification", "Finance")
     val scope = rememberCoroutineScope()
 
@@ -221,6 +241,7 @@ private fun BugHunterScreen() {
                         JSONObject(apiCall("/assessment/status", token))
                     }
                     assessmentRunning = assessment.optString("status") in listOf("queued", "running")
+                    localAssessmentFindings = parseLocalAssessmentFindings(assessment)
                     assessmentStatus = when (assessment.optString("status")) {
                         "queued" -> "Assessment queued…"
                         "running" -> "Running phase: " + assessment.optString("phase")
@@ -261,7 +282,8 @@ private fun BugHunterScreen() {
                         apiCall("/ledger", token),
                         apiCall("/workspace", token),
                         apiCall("/engagement/status", token),
-                        apiCall("/opportunities/status", token)
+                        apiCall("/opportunities/status", token),
+                        apiCall("/assessment/status", token)
                     )
                 }
                 val list = JSONObject(payload[1]).getJSONArray("opportunities")
@@ -300,6 +322,17 @@ private fun BugHunterScreen() {
                         item.optString("file"), item.optString("target"), item.optString("scope_file"),
                         item.optString("scope_preview")
                     ))
+                }
+                val latestAssessment = JSONObject(payload[6])
+                localAssessmentFindings = parseLocalAssessmentFindings(latestAssessment)
+                assessmentRunning = latestAssessment.optString("status") in listOf("queued", "running")
+                assessmentStatus = when (latestAssessment.optString("status")) {
+                    "queued" -> "Assessment queued…"
+                    "running" -> "Running phase: " + latestAssessment.optString("phase")
+                    "completed" -> "Completed. Report draft: " + latestAssessment.optString("report")
+                    "stopped" -> "Stopped: " + latestAssessment.optString("stop_reason")
+                    "failed" -> "Failed: " + latestAssessment.optString("error")
+                    else -> assessmentStatus
                 }
                 val discovery = JSONObject(payload[5])
                 discoveryStatus = when (discovery.optString("status")) {
@@ -526,6 +559,7 @@ private fun BugHunterScreen() {
                         JSONObject(apiCall("/assessment/status", token))
                     }
                     val state = job.optString("status")
+                    localAssessmentFindings = parseLocalAssessmentFindings(job)
                     assessmentRunning = state in listOf("queued", "running")
                     assessmentStatus = when (state) {
                         "queued" -> "Assessment queued…"
@@ -705,6 +739,27 @@ private fun BugHunterScreen() {
 
                 }
                 if (activeSection == "Findings") {
+                item {
+                    Text("LATEST LOCAL ASSESSMENT", style = MaterialTheme.typography.titleMedium)
+                    Text(localAssessmentFindings.size.toString() + " heuristic candidates · all require manual review and are not confirmed vulnerabilities.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (localAssessmentFindings.isEmpty()) {
+                    item { Text("No local assessment findings loaded yet. Run an assessment and refresh.") }
+                } else {
+                    items(localAssessmentFindings) { finding ->
+                        Card {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text(finding.category, style = MaterialTheme.typography.titleSmall)
+                                Text(finding.path + ":" + finding.line)
+                                Text(finding.priority + " · Review score " + finding.risk + " · " + finding.status,
+                                    style = MaterialTheme.typography.bodySmall)
+                                if (finding.snippet.isNotBlank()) Text(finding.snippet, style = MaterialTheme.typography.bodySmall)
+                                if (finding.guidance.isNotBlank()) Text(finding.guidance, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
                 item {
                     Text("STATIC AUDIT CANDIDATES", style = MaterialTheme.typography.titleMedium)
                     Text("Showing up to 100 candidates from the existing source audit. These are unconfirmed leads.",
