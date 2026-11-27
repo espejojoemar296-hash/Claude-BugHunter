@@ -51,7 +51,7 @@ private fun formatOpportunityDetails(item: JSONObject): String {
     val out = StringBuilder()
     out.append("Reward: ").append(item.optString("reward", "Not published")).append("\n")
     out.append("Availability: ").append(item.optString("availability", "Unverified")).append("\n")
-    out.append("Scope source: ").append(details.optString("scope_source")).append("\\n")
+    out.append("Scope source: ").append(details.optString("scope_source")).append("\n")
     val cache = details.optJSONObject("scope_cache")
     if (cache != null) {
         val cacheStatus = cache.optString("status", "unknown")
@@ -61,9 +61,9 @@ private fun formatOpportunityDetails(item: JSONObject): String {
         } else {
             (ageSeconds / 3600L).toString() + " hours old"
         }
-        out.append("Scope cache: ").append(cacheStatus).append(" · ").append(ageLabel).append("\\n")
+        out.append("Scope cache: ").append(cacheStatus).append(" · ").append(ageLabel).append("\n")
         if (cache.optString("warning").isNotBlank()) {
-            out.append("Cache warning: ").append(cache.optString("warning")).append("\\n")
+            out.append("Cache warning: ").append(cache.optString("warning")).append("\n")
         }
     }
     for ((label, key) in sections) {
