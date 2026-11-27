@@ -202,6 +202,7 @@ private fun BugHunterScreen() {
     var verificationSummary by remember { mutableStateOf("No verification workspaces found.") }
     var auditCandidates by remember { mutableStateOf(listOf<AuditFinding>()) }
     var localAssessmentFindings by remember { mutableStateOf(listOf<LocalAssessmentFinding>()) }
+    var showAllLocalFindings by remember { mutableStateOf(false) }
     val sections = listOf("Dashboard", "Programs", "Workspace", "Findings", "Verification", "Finance")
     val scope = rememberCoroutineScope()
 
@@ -739,15 +740,25 @@ private fun BugHunterScreen() {
 
                 }
                 if (activeSection == "Findings") {
+                val visibleLocalFindings = if (showAllLocalFindings) localAssessmentFindings else localAssessmentFindings.take(50)
                 item {
                     Text("LATEST LOCAL ASSESSMENT", style = MaterialTheme.typography.titleMedium)
-                    Text(localAssessmentFindings.size.toString() + " heuristic candidates · all require manual review and are not confirmed vulnerabilities.",
+                    Text(localAssessmentFindings.size.toString() + " heuristic candidates · P1 review: " +
+                        localAssessmentFindings.count { it.priority == "P1_REVIEW" } +
+                        " · P2 review: " + localAssessmentFindings.count { it.priority == "P2_REVIEW" } +
+                        " · P3 review: " + localAssessmentFindings.count { it.priority == "P3_REVIEW" } +
+                        ". All are unconfirmed and require manual review.",
                         style = MaterialTheme.typography.bodySmall)
+                    if (localAssessmentFindings.size > 50) {
+                        OutlinedButton(onClick = { showAllLocalFindings = !showAllLocalFindings }) {
+                            Text(if (showAllLocalFindings) "Show top 50 only" else "Show all " + localAssessmentFindings.size + " candidates")
+                        }
+                    }
                 }
                 if (localAssessmentFindings.isEmpty()) {
                     item { Text("No local assessment findings loaded yet. Run an assessment and refresh.") }
                 } else {
-                    items(localAssessmentFindings) { finding ->
+                    items(visibleLocalFindings) { finding ->
                         Card {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text(finding.category, style = MaterialTheme.typography.titleSmall)
