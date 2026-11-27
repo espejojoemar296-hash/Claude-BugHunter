@@ -41,7 +41,7 @@ class DiscoveryCacheWarningTests(unittest.TestCase):
         self.assertEqual(details["scope_cache"]["status"], "stale_fallback")
         self.assertIn("STALE PUBLIC DATASET CACHE", details["scope_source"])
         self.assertIn("using cached dataset", details["scope_cache"]["warning"])
-        self.assertNotIn("authorization", details["scope_source"].lower())
+        self.assertIn("do not treat this as authorization", details["scope_source"])
 
 
 if __name__ == "__main__":
