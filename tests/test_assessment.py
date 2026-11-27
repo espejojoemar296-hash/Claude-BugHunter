@@ -34,7 +34,19 @@ class AssessmentTests(unittest.TestCase):
             self.assertTrue(any(x["category"] == "dynamic_code_execution" for x in findings))
             secret = next(x for x in findings if x["category"] == "possible_token_assignment")
             self.assertEqual(secret["snippet"], "[POTENTIAL SECRET REDACTED]")
+            self.assertTrue(all(x["status"] in ("CANDIDATE_NOT_CONFIRMED", "REDACTED_CANDIDATE") for x in findings))
+            self.assertTrue(all(x["confidence"] == "heuristic_only" for x in findings))
+            self.assertTrue(all("priority" in x and "risk_score" in x for x in findings))
+            self.assertIn("Priority counts", Path(state["report"]).read_text(encoding="utf-8"))
             self.assertEqual(len(assessment.history(root)), 1)
+
+    def test_triage_ranks_review_effort_without_confirming_findings(self):
+        secret = assessment._triage({"category": "possible_token_assignment", "status": "REDACTED_CANDIDATE"})
+        debug = assessment._triage({"category": "debug_mode", "status": "CANDIDATE_NOT_CONFIRMED"})
+        self.assertGreater(secret["risk_score"], debug["risk_score"])
+        self.assertEqual(secret["priority"], "P1_REVIEW")
+        self.assertEqual(secret["confidence"], "heuristic_only")
+        self.assertIn("not proof", secret["triage_note"])
 
     def test_assessment_deduplicates_identical_candidates(self):
         with tempfile.TemporaryDirectory() as tmp:
