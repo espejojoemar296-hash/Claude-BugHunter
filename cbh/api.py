@@ -7,6 +7,7 @@ import os
 import re
 import secrets
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlsplit
@@ -326,16 +327,30 @@ def _opportunity_details(rows):
 
     wanted = {(str(row.get("platform") or ""), str(row.get("handle") or "")) for row in rows}
     by_platform = {}
+    cache_by_platform = {}
     for platform, handle in wanted:
         if platform not in by_platform:
+            cache_warnings = []
             try:
-                records, _ = si.load_platform(platform, refresh=False)
+                records, cache_path = si.load_platform(
+                    platform, refresh=False, log=cache_warnings.append
+                )
                 by_platform[platform] = {
                     str(si._record_handle(platform, rec) or ""): rec
                     for rec in records
                 }
+                age_seconds = max(0, int(time.time() - os.path.getmtime(cache_path)))
+                cache_by_platform[platform] = {
+                    "status": "stale_fallback" if cache_warnings else "available",
+                    "age_seconds": age_seconds,
+                    "warning": cache_warnings[0][:300] if cache_warnings else "",
+                }
             except Exception:
                 by_platform[platform] = {}
+                cache_by_platform[platform] = {
+                    "status": "unavailable", "age_seconds": None,
+                    "warning": "scope cache unavailable; refresh failed",
+                }
 
     result = []
     for row in rows:
@@ -346,7 +361,16 @@ def _opportunity_details(rows):
             "in_scope": [], "out_of_scope": [], "needs_review": [],
             "other_assets": [], "conduct": [],
             "scope_source": "public program dataset; verify on the platform before testing",
+            "scope_cache": cache_by_platform.get(platform, {
+                "status": "unavailable", "age_seconds": None,
+                "warning": "scope cache unavailable",
+            }),
         }
+        if details["scope_cache"]["status"] == "stale_fallback":
+            details["scope_source"] = (
+                "STALE PUBLIC DATASET CACHE — verify the current program policy on the platform; "
+                "do not treat this as authorization"
+            )
         if rec:
             try:
                 program = si.program_from_record(platform, rec)
