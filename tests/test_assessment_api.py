@@ -38,6 +38,23 @@ class AssessmentApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("assessments", payload)
 
+    def test_opportunity_discovery_status_route_exists_and_is_authenticated(self):
+        status, payload = self.call("/opportunities/status")
+        self.assertEqual(status, 200)
+        self.assertIn(payload.get("status"), ("idle", "running", "completed", "failed"))
+
+        request = Request(self.base + "/opportunities/status")
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(request, timeout=3)
+        self.assertEqual(caught.exception.code, 401)
+
+    def test_opportunity_refresh_route_returns_accepted(self):
+        with patch("cbh.api._start_discovery", return_value=True) as start:
+            status, payload = self.call("/opportunities/refresh", {}, "POST")
+        self.assertEqual(status, 202)
+        self.assertTrue(payload["started"])
+        start.assert_called_once()
+
     def test_start_accepts_only_local_only_mode(self):
         with patch("cbh.assessment.start", return_value=(True, {"id": "unit-test", "status": "queued"})) as start:
             status, payload = self.call("/assessment/start", {"mode": "local_only", "program": "Demo"}, "POST")
