@@ -397,7 +397,8 @@ def _opportunity_details(rows):
             except Exception as exc:
                 details["scope_source"] = "scope details unavailable: " + type(exc).__name__
         else:
-            details["scope_source"] = "scope data not present in local cache; open the platform page to verify"
+            if details["scope_cache"]["status"] != "stale_fallback":
+                details["scope_source"] = "scope data not present in local cache; open the platform page to verify"
         item["details"] = details
         result.append(item)
     return result
