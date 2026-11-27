@@ -60,6 +60,31 @@ def _key(item):
     raw = "|".join((item["path"], str(item["line"]), item["category"], item["snippet"]))
     return hashlib.sha256(raw.encode()).hexdigest()[:20]
 
+def _triage(item):
+    """Rank review effort only; scores never mean exploitability or confirmation."""
+    category = item.get("category", "")
+    scores = {
+        "possible_private_key": 90,
+        "possible_aws_access_key": 85,
+        "possible_token_assignment": 80,
+        "command_execution": 75,
+        "dynamic_code_execution": 70,
+        "sql_string_concatenation": 65,
+        "weak_tls_verification": 45,
+        "debug_mode": 20,
+    }
+    score = scores.get(category, 10)
+    item["risk_score"] = score
+    item["priority"] = "P1_REVIEW" if score >= 80 else "P2_REVIEW" if score >= 60 else "P3_REVIEW"
+    item["confidence"] = "heuristic_only"
+    item["triage_note"] = "Review priority only; this pattern is not proof of a vulnerability."
+    return item
+
+def _publish(state):
+    global _JOB
+    with _LOCK:
+        _JOB = dict(state)
+
 def _persist(root, state):
     _atomic_json(root / ".bughunter-assessments" / state["id"] / "state.json", state)
 
@@ -101,7 +126,8 @@ def _scan(root, aid):
         if scanned >= _MAX_FILES or len(findings) >= 1000: break
     unique = {}
     for item in findings: unique.setdefault(item["deduplication_key"], item)
-    findings = list(unique.values())
+    findings = [_triage(item) for item in unique.values()]
+    findings.sort(key=lambda item: (-item["risk_score"], item["path"], item["line"], item["category"]))
     _atomic_json(evidence / "findings.json", findings)
     return {"files_scanned": scanned, "files_skipped": skipped, "bytes_scanned": total, "findings": findings}
 
@@ -122,15 +148,18 @@ def _worker(root, state):
     try:
         state.update(status="running", phase="local_scan")
         _persist(root, state)
+        _publish(state)
         result = _scan(root, state["id"])
         state["summary"] = {k: v for k, v in result.items() if k != "findings"}
         state["findings"] = result["findings"]
+        _publish(state)
         if _STOP.is_set():
             state.update(status="stopped", phase="stopped", stop_reason="Emergency stop requested.")
             _persist(root, state)
             return
         state.update(phase="offline_simulation")
         _persist(root, state)
+        _publish(state)
         state["simulation"] = _simulate(result["findings"])
         if _STOP.is_set():
             state.update(status="stopped", phase="stopped", stop_reason="Emergency stop requested.")
@@ -138,11 +167,15 @@ def _worker(root, state):
             return
         state.update(phase="report")
         _persist(root, state)
+        _publish(state)
         report_dir = root / ".bughunter-assessments" / state["id"]
-        lines = ["# BugHunterAI Local Assessment Draft", "", "> Draft only. Heuristic candidates are not confirmed vulnerabilities.", "> Local-only run: no target was contacted and no target code was executed.", "", "## Summary", "", "- Files scanned: " + str(result["files_scanned"]), "- Files skipped: " + str(result["files_skipped"]), "- Candidate findings: " + str(len(result["findings"])), "- Network requests: 0", "", "## Findings", ""]
+        priority_counts = {}
+        for item in result["findings"]:
+            priority_counts[item["priority"]] = priority_counts.get(item["priority"], 0) + 1
+        lines = ["# BugHunterAI Local Assessment Draft", "", "> Draft only. Heuristic candidates are not confirmed vulnerabilities.", "> Priority scores rank manual review effort; they do not establish exploitability.", "> Local-only run: no target was contacted and no target code was executed.", "", "## Summary", "", "- Files scanned: " + str(result["files_scanned"]), "- Files skipped: " + str(result["files_skipped"]), "- Candidate findings: " + str(len(result["findings"])), "- Priority counts: " + json.dumps(priority_counts, sort_keys=True), "- Network requests: 0", "", "## Findings", ""]
         if not result["findings"]: lines.append("No candidate patterns detected by enabled checks.")
         for item in result["findings"]:
-            lines.extend(["### " + item["category"], "", "- Location: " + item["path"] + ":" + str(item["line"]), "- Status: " + item["status"], "- Evidence: " + item["snippet"], "- Review: " + item["guidance"], ""])
+            lines.extend(["### " + item["category"], "", "- Location: " + item["path"] + ":" + str(item["line"]), "- Review priority: " + item["priority"] + " (score " + str(item["risk_score"]) + ")", "- Confidence: heuristic only", "- Status: " + item["status"], "- Evidence: " + item["snippet"], "- Review: " + item["guidance"], ""])
         lines.extend(["## Offline impact simulation", ""])
         if not state["simulation"]["paths"]: lines.append("No synthetic impact paths generated from these candidates.")
         for item in state["simulation"]["paths"]:
