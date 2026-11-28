@@ -203,6 +203,7 @@ private fun BugHunterScreen() {
     var auditCandidates by remember { mutableStateOf(listOf<AuditFinding>()) }
     var localAssessmentFindings by remember { mutableStateOf(listOf<LocalAssessmentFinding>()) }
     var showAllLocalFindings by remember { mutableStateOf(false) }
+    var findingSearchQuery by remember { mutableStateOf("") }
     val sections = listOf("Dashboard", "Programs", "Workspace", "Findings", "Verification", "Finance")
     val scope = rememberCoroutineScope()
 
@@ -740,7 +741,18 @@ private fun BugHunterScreen() {
 
                 }
                 if (activeSection == "Findings") {
-                val visibleLocalFindings = if (showAllLocalFindings) localAssessmentFindings else localAssessmentFindings.take(50)
+                val findingQuery = findingSearchQuery.trim()
+                val filteredLocalFindings = localAssessmentFindings.filter { finding ->
+                    findingQuery.isBlank() ||
+                        listOf(finding.category, finding.path, finding.priority, finding.status, finding.snippet, finding.guidance, finding.line.toString(), finding.risk.toString())
+                            .any { it.contains(findingQuery, ignoreCase = true) }
+                }
+                val filteredAuditCandidates = auditCandidates.filter { finding ->
+                    findingQuery.isBlank() ||
+                        listOf(finding.category, finding.file, finding.priority, finding.confidence, finding.function, finding.trace, finding.line.toString(), finding.risk.toString())
+                            .any { it.contains(findingQuery, ignoreCase = true) }
+                }
+                val visibleLocalFindings = if (showAllLocalFindings) filteredLocalFindings else filteredLocalFindings.take(50)
                 item {
                     Text("LATEST LOCAL ASSESSMENT", style = MaterialTheme.typography.titleMedium)
                     Text(localAssessmentFindings.size.toString() + " heuristic candidates · P1 review: " +
@@ -749,13 +761,31 @@ private fun BugHunterScreen() {
                         " · P3 review: " + localAssessmentFindings.count { it.priority == "P3_REVIEW" } +
                         ". All are unconfirmed and require manual review.",
                         style = MaterialTheme.typography.bodySmall)
-                    if (localAssessmentFindings.size > 50) {
+                    OutlinedTextField(
+                        value = findingSearchQuery,
+                        onValueChange = { findingSearchQuery = it },
+                        label = { Text("Search findings") },
+                        placeholder = { Text("Type, file, priority, evidence…") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        trailingIcon = {
+                            if (findingSearchQuery.isNotBlank()) {
+                                TextButton(onClick = { findingSearchQuery = "" }) { Text("Clear") }
+                            }
+                        }
+                    )
+                    Text(
+                        "Showing " + filteredLocalFindings.size + " of " + localAssessmentFindings.size +
+                            " assessment findings · " + filteredAuditCandidates.size + " of " + auditCandidates.size + " audit candidates match",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (filteredLocalFindings.size > 50) {
                         OutlinedButton(onClick = { showAllLocalFindings = !showAllLocalFindings }) {
-                            Text(if (showAllLocalFindings) "Show top 50 only" else "Show all " + localAssessmentFindings.size + " candidates")
+                            Text(if (showAllLocalFindings) "Show top 50 only" else "Show all " + filteredLocalFindings.size + " matches")
                         }
                     }
                 }
-                if (localAssessmentFindings.isEmpty()) {
+                if (filteredLocalFindings.isEmpty()) {
                     item { Text("No local assessment findings loaded yet. Run an assessment and refresh.") }
                 } else {
                     items(visibleLocalFindings) { finding ->
@@ -779,7 +809,7 @@ private fun BugHunterScreen() {
                 if (auditCandidates.isEmpty()) {
                     item { Text("No audit candidates loaded. Connect to Termux and refresh.") }
                 } else {
-                    items(auditCandidates) { finding ->
+                    items(filteredAuditCandidates) { finding ->
                         Card {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text(finding.category.ifBlank { "Unclassified candidate" }, style = MaterialTheme.typography.titleSmall)
