@@ -14,7 +14,9 @@ From the repository root in Termux, start:
 
 At first startup it creates a random API token under ~/.config/claude-bughunter/api-token and prints it once. Keep the Termux session running. Open BugHunter AI, paste the token, and tap Connect / Refresh.
 
-The service binds only to 127.0.0.1:8765 and requires a bearer token. It exposes bounty opportunities, the income ledger, workspace file names, scope preview, approved-target summaries, Telegram status, and engagement status.
+The service binds only to 127.0.0.1:8765 and requires a bearer token. It exposes bounty opportunities, asynchronous public-program discovery, the income/expense ledger, workspace file names, scope preview, approved-target summaries, Telegram status, and engagement status.
+
+In the app, use **Discover / refresh bounty programs** to refresh public opportunity data from supported platform datasets. Discovery does not scan target assets. Use the earnings panel to record received bounty payments and research expenses; ledger entries are manual records, not automatic payment verification.
 
 ## Run an approved engagement
 

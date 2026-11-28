@@ -96,7 +96,7 @@ def discover(platforms=None, search=None, bounty_only=False,
 
     for platform in selected:
         try:
-            records, cache_path = si.load_platform(platform, refresh=refresh)
+            records, cache_path = si.load_platform(platform, refresh=refresh, log=warnings.append)
         except Exception as exc:
             warnings.append(f"{platform}: {exc}")
             continue
