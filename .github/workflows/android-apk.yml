@@ -2,7 +2,7 @@ name: Android APK
 
 on:
   push:
-    branches: [main, "bughunterai/**"]
+    branches: [main]
     paths:
       - "android-app/**"
       - ".github/workflows/android-apk.yml"
@@ -11,6 +11,10 @@ on:
       - "android-app/**"
       - ".github/workflows/android-apk.yml"
   workflow_dispatch:
+
+concurrency:
+  group: android-apk-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -35,3 +39,4 @@ jobs:
           name: BugHunterAI-debug-apk
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7

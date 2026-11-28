@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -24,7 +25,7 @@ import java.net.URL
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { BugHunterScreen(restoreConnection = savedInstanceState != null) }
+        setContent { BugHunterScreen() }
     }
 }
 
@@ -173,8 +174,9 @@ private fun workspaceFiles(json: JSONObject, key: String): List<WorkspaceFile> {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BugHunterScreen(restoreConnection: Boolean = false) {
-    var token by rememberSaveable { mutableStateOf("") }
+private fun BugHunterScreen() {
+    val context = LocalContext.current.applicationContext
+    var token by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Connect to the Termux engine on this device.") }
     var opportunities by remember { mutableStateOf(listOf<Opportunity>()) }
@@ -277,10 +279,15 @@ private fun BugHunterScreen(restoreConnection: Boolean = false) {
         }
         busy = true
         scope.launch {
+            var authenticated = false
             try {
+                withContext(Dispatchers.IO) { apiCall("/health", token) }
+                withContext(Dispatchers.IO) { TokenVault.save(context, token) }
+                authenticated = true
+                connected = true
+                status = "Connected to the local Termux engine."
                 val payload = withContext(Dispatchers.IO) {
                     listOf(
-                        apiCall("/health", token),
                         apiCall("/opportunities?limit=100", token),
                         apiCall("/ledger", token),
                         apiCall("/workspace", token),
@@ -406,16 +413,25 @@ private fun BugHunterScreen(restoreConnection: Boolean = false) {
                 connected = true
                 status = "Connected to the local Termux engine."
             } catch (error: Exception) {
-                connected = false
-                status = error.message ?: "Could not connect. Check that the Termux API is running."
+                connected = authenticated
+                status = if (authenticated) {
+                    "Connected, but some workspace data could not be refreshed: " + (error.message ?: "temporary API error")
+                } else {
+                    error.message ?: "Could not connect. Check that the Termux API is running."
+                }
             } finally {
                 busy = false
             }
         }
     }
 
-    LaunchedEffect(restoreConnection) {
-        if (restoreConnection && token.isNotBlank()) refresh()
+    LaunchedEffect(Unit) {
+        val savedToken = withContext(Dispatchers.IO) { TokenVault.load(context) }
+        if (!savedToken.isNullOrBlank()) {
+            token = savedToken
+            status = "Saved secure connection found. Reconnecting…"
+            refresh()
+        }
     }
 
     fun startDiscovery() {
@@ -632,6 +648,17 @@ private fun BugHunterScreen(restoreConnection: Boolean = false) {
                             Button(onClick = { refresh() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (busy) "Connecting…" else "Connect / Refresh")
                             }
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) { TokenVault.clear(context) }
+                                        token = ""
+                                        connected = false
+                                        status = "Disconnected. The saved encrypted token was cleared."
+                                    }
+                                },
+                                enabled = !busy
+                            ) { Text("Disconnect and forget token") }
                             Text(if (connected) "Connected" else "Not connected",
                                 color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                         }
