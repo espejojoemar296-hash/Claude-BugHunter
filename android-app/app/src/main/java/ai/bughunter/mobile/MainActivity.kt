@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -23,7 +24,7 @@ import java.net.URL
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { BugHunterScreen() }
+        setContent { BugHunterScreen(restoreConnection = savedInstanceState != null) }
     }
 }
 
@@ -172,8 +173,8 @@ private fun workspaceFiles(json: JSONObject, key: String): List<WorkspaceFile> {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BugHunterScreen() {
-    var token by remember { mutableStateOf("") }
+private fun BugHunterScreen(restoreConnection: Boolean = false) {
+    var token by rememberSaveable { mutableStateOf("") }
     var connected by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Connect to the Termux engine on this device.") }
     var opportunities by remember { mutableStateOf(listOf<Opportunity>()) }
@@ -197,13 +198,13 @@ private fun BugHunterScreen() {
     var assessmentStatus by remember { mutableStateOf("No local assessment has been run.") }
     var assessmentRunning by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var activeSection by remember { mutableStateOf("Dashboard") }
+    var activeSection by rememberSaveable { mutableStateOf("Dashboard") }
     var auditSummary by remember { mutableStateOf("No source audit report found.") }
     var verificationSummary by remember { mutableStateOf("No verification workspaces found.") }
     var auditCandidates by remember { mutableStateOf(listOf<AuditFinding>()) }
     var localAssessmentFindings by remember { mutableStateOf(listOf<LocalAssessmentFinding>()) }
     var showAllLocalFindings by remember { mutableStateOf(false) }
-    var findingSearchQuery by remember { mutableStateOf("") }
+    var findingSearchQuery by rememberSaveable { mutableStateOf("") }
     val sections = listOf("Dashboard", "Programs", "Workspace", "Findings", "Verification", "Finance")
     val scope = rememberCoroutineScope()
 
@@ -411,6 +412,10 @@ private fun BugHunterScreen() {
                 busy = false
             }
         }
+    }
+
+    LaunchedEffect(restoreConnection) {
+        if (restoreConnection && token.isNotBlank()) refresh()
     }
 
     fun startDiscovery() {
